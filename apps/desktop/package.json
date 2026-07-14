@@ -1,0 +1,88 @@
+{
+  "name": "@c1sc/desktop",
+  "version": "1.0.0",
+  "description": "C1 Speaking Coach desktop application",
+  "main": "dist-electron/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && electron-builder",
+    "build:win": "npm run build -- --win",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "test:unit": "vitest",
+    "test:integration": "vitest --config vitest.integration.config.ts",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@c1sc/shared-types": "*",
+    "@radix-ui/react-alert-dialog": "^1.0.5",
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-dropdown-menu": "^2.0.6",
+    "@radix-ui/react-label": "^2.0.2",
+    "@radix-ui/react-progress": "^1.0.3",
+    "@radix-ui/react-select": "^2.0.0",
+    "@radix-ui/react-slider": "^1.1.2",
+    "@radix-ui/react-switch": "^1.0.3",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@radix-ui/react-toast": "^1.1.5",
+    "@tanstack/react-query": "^5.14.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "axios": "^1.6.2",
+    "better-sqlite3": "^12.11.1",
+    "clsx": "^2.0.0",
+    "date-fns": "^3.0.0",
+    "framer-motion": "^10.16.16",
+    "lucide-react": "^1.24.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.1",
+    "recharts": "^2.10.3",
+    "zod": "^3.22.4",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.1",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.7",
+    "vite-plugin-electron": "^0.28.0",
+    "vite-plugin-electron-renderer": "^0.14.5",
+    "vitest": "^1.0.4"
+  },
+  "build": {
+    "appId": "com.c1speakingcoach.app",
+    "productName": "C1 Speaking Coach",
+    "directories": {
+      "output": "release/${version}"
+    },
+    "files": [
+      "dist-electron",
+      "dist"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

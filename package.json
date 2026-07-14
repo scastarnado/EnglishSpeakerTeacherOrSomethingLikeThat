@@ -1,0 +1,68 @@
+{
+  "name": "c1-speaking-coach",
+  "version": "1.0.0",
+  "description": "Local-first desktop application for C1 Advanced English Speaking examination practice",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:service\" \"npm run dev:desktop\"",
+    "dev:desktop": "npm run dev --workspace=@c1sc/desktop",
+    "dev:service": "npm run dev --workspace=@c1sc/ai-service",
+    "build": "npm run build --workspaces --if-present",
+    "build:win": "npm run build:win --workspace=@c1sc/desktop",
+    "test": "npm test --workspaces --if-present",
+    "test:unit": "npm run test:unit --workspaces --if-present",
+    "test:integration": "npm run test:integration --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace=@c1sc/desktop",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "type-check": "npm run type-check --workspaces --if-present",
+    "db:migrate": "node scripts/migrate-db.js",
+    "db:seed": "node scripts/seed-db.js",
+    "clean": "rimraf apps/**/dist apps/**/build packages/**/dist node_modules/.cache"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.1.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/c1-speaking-coach.git"
+  },
+  "keywords": [
+    "english",
+    "c1",
+    "speaking",
+    "examination",
+    "practice",
+    "ai",
+    "local",
+    "offline",
+    "privacy"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "optionalDependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "dependencies": {
+    "mysql2": "^3.22.6",
+    "sql.js": "^1.14.1"
+  }
+}

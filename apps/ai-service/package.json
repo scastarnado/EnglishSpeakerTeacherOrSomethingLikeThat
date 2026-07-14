@@ -1,0 +1,20 @@
+{
+  "name": "@c1sc/ai-service",
+  "version": "1.0.0",
+  "description": "Python AI service for C1 Speaking Coach",
+  "scripts": {
+    "dev": "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+    "start": "python -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
+    "test": "pytest",
+    "lint": "ruff check app",
+    "format": "black app"
+  },
+  "keywords": [
+    "python",
+    "fastapi",
+    "ai",
+    "speech"
+  ],
+  "author": "",
+  "license": "MIT"
+}

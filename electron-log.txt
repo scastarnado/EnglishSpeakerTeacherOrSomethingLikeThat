@@ -1,0 +1,42 @@
+
+> @c1sc/desktop@1.0.0 dev
+> vite
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+[36mvite v5.4.21 [32mbuilding for development...[36m[39m
+[36m
+watching for file changes...[39m
+[36mvite v5.4.21 [32mbuilding for development...[36m[39m
+[36m
+watching for file changes...[39m
+[36m
+build started...[39m
+[36m
+build started...[39m
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1160[22m[2m[0m ms[22m
+
+  [32mΓ₧£[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3000[22m/[39m
+[2m  [32mΓ₧£[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m[32m  Γ₧£[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+transforming...
+transforming...
+[32mΓ£ô[39m 1 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist-electron/[22m[36mindex.js  [39m[1m[2m2.81 kB[22m[1m[22m[2m Γöé gzip: 0.67 kB[22m
+[36mbuilt in 70ms.[39m
+[32mΓ£ô[39m 201 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist-electron/[22m[36mindex.js  [39m[1m[2m488.67 kB[22m[1m[22m[2m Γöé gzip: 95.66 kB[22m
+[36mbuilt in 1614ms.[39m
+
+ERROR: The process "25072" not found.
+npm error Lifecycle script `dev` failed with error:
+npm error code 1
+npm error path D:\EnglishSpeakerTeacherOrSomethingLikeThat\apps\desktop
+npm error workspace @c1sc/desktop@1.0.0
+npm error location D:\EnglishSpeakerTeacherOrSomethingLikeThat\apps\desktop
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c vite
