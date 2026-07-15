@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">People learning a practical skill outdoors</title>
+  <desc id="desc">An outdoor training scene where a group learns map reading and practical navigation skills.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#b9dcf2"/>
+      <stop offset="1" stop-color="#eef7fb"/>
+    </linearGradient>
+    <linearGradient id="grass" x1="0" x2="1">
+      <stop offset="0" stop-color="#6fa66a"/>
+      <stop offset="1" stop-color="#406f46"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sky)"/>
+  <path d="M0 380c145-80 268-52 390-15 155 46 290 30 430-38 150-72 268-61 380 15v458H0z" fill="url(#grass)"/>
+  <path d="M0 395c120-70 225-80 340-44 140 45 270 60 412-18 118-65 260-85 448-8v78c-192-74-320-38-446 28-142 74-290 52-430 11C214 411 105 435 0 500z" fill="#8fc080" opacity=".8"/>
+  <circle cx="1030" cy="110" r="64" fill="#ffd166"/>
+  <path d="M120 348l95-145 95 145zM245 350l135-215 135 215zM760 345l120-175 120 175z" fill="#6c8a70"/>
+  <path d="M525 610l148-92 94 118-157 88z" fill="#f7ecd0" stroke="#6d5b42" stroke-width="8"/>
+  <path d="M560 610l64-42M624 568l32 95M678 545l42 70M585 690l132-78" stroke="#9b7c4b" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="330" cy="390" r="52" fill="#8a5b43"/>
+  <path d="M275 478c20-70 93-77 121-8l45 126H240z" fill="#334b6f"/>
+  <path d="M390 516l132 66" stroke="#8a5b43" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="560" cy="360" r="56" fill="#b87652"/>
+  <path d="M500 455c20-74 104-82 137-10l45 142H466z" fill="#d88a36"/>
+  <path d="M620 505l130-38" stroke="#b87652" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="800" cy="390" r="50" fill="#6f4637"/>
+  <path d="M748 480c24-67 91-73 121-8l48 122H715z" fill="#5d7f45"/>
+  <path d="M760 525l-120 36M866 517l95 50" stroke="#6f4637" stroke-width="24" stroke-linecap="round"/>
+  <path d="M922 568l52-32 18 28-52 32z" fill="#333"/>
+  <path d="M145 660c190 48 348 36 515 0 140-30 265-34 415 8" stroke="#315637" stroke-width="22" stroke-linecap="round" opacity=".45"/>
+</svg>

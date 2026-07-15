@@ -1,6 +1,8 @@
 """Assessment engine - generates evidence-based feedback."""
 
 from typing import List, Optional, Dict, Any
+from datetime import datetime, timezone
+from uuid import uuid4
 from pydantic import BaseModel, Field, ConfigDict
 from app.llm.ollama_client import OllamaClient
 
@@ -18,7 +20,7 @@ class CriterionScore(BaseModel):
 
 
 class AssessmentScores(BaseModel):
-    """All criterion scores."""
+    """All criterion scores - Official C1 Advanced 5 criteria."""
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -28,6 +30,9 @@ class AssessmentScores(BaseModel):
     pronunciation: CriterionScore
     interactive_communication: CriterionScore = Field(..., alias="interactiveCommunication", serialization_alias="interactiveCommunication")
     global_achievement: CriterionScore = Field(..., alias="globalAchievement", serialization_alias="globalAchievement")
+    
+    # Note: Global Achievement is calculated based on the other 4 criteria
+    # It represents the overall effectiveness at C1 level
 
 
 class Correction(BaseModel):
@@ -64,6 +69,13 @@ class Assessment(BaseModel):
     
     model_config = ConfigDict(populate_by_name=True)
 
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    session_id: Optional[str] = Field(None, alias="sessionId", serialization_alias="sessionId")
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        alias="createdAt",
+        serialization_alias="createdAt",
+    )
     assessment_version: str = Field("1.0", alias="assessmentVersion", serialization_alias="assessmentVersion")
     estimated_overall_level: str = Field(..., alias="estimatedOverallLevel", serialization_alias="estimatedOverallLevel")
     overall_summary: str = Field(..., alias="overallSummary", serialization_alias="overallSummary")
@@ -104,6 +116,8 @@ class AssessmentEngine:
                 temperature=0.3,  # Lower temperature for more consistent assessment
                 max_retries=3,
             )
+            if not assessment.session_id:
+                assessment.session_id = session_data.get("id") or session_data.get("sessionId")
             return assessment
         except Exception as e:
             print(f"[Assessment] Error generating assessment: {e}")
@@ -113,36 +127,103 @@ class AssessmentEngine:
     def _build_assessor_system_prompt(self) -> str:
         """Build system prompt for assessor."""
 
-        return """You are an experienced C1 Advanced English speaking examiner.
+        return """You are an experienced Cambridge C1 Advanced English speaking examiner trained in the official assessment criteria.
 
 Your task:
-- Assess the candidate's speaking performance
-- Provide evidence-based feedback
-- Quote specific examples from the transcript
-- Give honest, constructive feedback
-- Distinguish between observed issues and inferred ones
+- Assess speaking performance using the 5 official Cambridge criteria
+- Provide evidence-based, specific feedback with transcript quotes
+- Reference specific turn IDs for every claim
+- Give constructive, actionable feedback
+- Distinguish between observed issues and inferences
 
-Assessment criteria:
-1. Grammatical Resource: Range and accuracy of grammar
-2. Lexical Resource: Range and precision of vocabulary
-3. Discourse Management: Coherence, cohesion, organization
-4. Pronunciation: Intelligibility, stress, intonation, individual sounds
-5. Interactive Communication: Initiating, responding, turn-taking
-6. Global Achievement: Overall C1 proficiency
+OFFICIAL C1 ADVANCED ASSESSMENT CRITERIA:
 
-Important constraints:
-- Every important claim must cite evidence from the transcript
-- Use turn IDs when referencing specific moments
-- For pronunciation, be conservative - only comment on clear patterns
-- Acknowledge when confidence is low
-- Never invent errors that aren't in the transcript
-- Distinguish between errors and less natural but acceptable language
+1. GRAMMAR AND VOCABULARY (Grammatical Resource + Lexical Resource)
+   C1 Expectations:
+   - Wide range of complex grammatical structures with control
+   - Rich, precise vocabulary with sophisticated expressions
+   - Idiomatic language and colloquialisms used appropriately
+   - Minor errors don't impede communication
+   
+   Look for:
+   - Complex sentence structures (conditionals, subjunctives, passive, reported speech)
+   - Advanced tenses and aspects
+   - Precise vocabulary choices
+   - Collocations and phrasal verbs
+   - Academic/formal register when appropriate
 
-Remember:
-- This is practice assessment, not official Cambridge scoring
-- Provide actionable, specific feedback
+2. DISCOURSE MANAGEMENT
+   C1 Expectations:
+   - Extended, coherent discourse with logical development
+   - Effective cohesive devices without overuse
+   - Develops topics fully with relevant details
+   - Natural topic transitions
+   - Avoids one-word or very brief answers
+   
+   Look for:
+   - Coherent paragraphing in extended responses
+   - Linkers (however, moreover, on the other hand)
+   - Reference words (this, that, such, those)
+   - Ability to expand on ideas without prompting
+
+3. PRONUNCIATION
+   C1 Expectations:
+   - Clear, intelligible speech
+   - Appropriate word and sentence stress
+   - Natural intonation for emphasis and meaning
+   - Individual sounds mostly accurate
+   - Pronunciation doesn't impede understanding
+   
+   Look for:
+   - Stress patterns on multi-syllable words
+   - Rising/falling intonation for questions/statements
+   - Connected speech features
+   - Clear articulation
+   
+   NOTE: Be conservative - only comment on clear patterns in transcript
+
+4. INTERACTIVE COMMUNICATION
+   C1 Expectations:
+   - Initiates and maintains interaction naturally
+   - Responds promptly and relevantly
+   - Shows active listening
+   - Uses communication strategies (clarification, paraphrasing)
+   - Engaging and confident
+   
+   Look for:
+   - Quick, relevant responses
+   - Building on examiner's questions
+   - Natural conversation flow
+   - Handling unexpected questions
+
+5. GLOBAL ACHIEVEMENT
+   C1 Expectations:
+   - Achieves communicative purposes effectively
+   - Sustained C1-level performance throughout
+   - Demonstrates overall proficiency
+   - Confidence and fluency
+   
+   Overall assessment:
+   - Can the candidate function effectively at C1 level?
+   - Are communicative goals achieved?
+   - Is performance consistent?
+
+SCORING GUIDE (0-5 scale):
+5.0 = C2 level (exceptional)
+4.5-4.9 = Strong C1
+4.0-4.4 = Solid C1
+3.5-3.9 = C1 borderline / B2+
+3.0-3.4 = B2 level
+Below 3.0 = B1 or lower
+
+IMPORTANT CONSTRAINTS:
+- Every claim must cite turn_id and quote transcript excerpt
+- For pronunciation, be conservative - transcripts have limitations
+- Acknowledge confidence levels and limitations
+- Never invent errors not in the transcript
 - Prioritize the most impactful improvements
-- Be encouraging while being honest"""
+- Balance encouragement with honest assessment
+- This is practice feedback, not official Cambridge scoring"""
 
     def _build_assessment_prompt(
         self,
@@ -156,36 +237,81 @@ Remember:
         prompt_parts = []
 
         # Session context
+        prompt_parts.append("="*80)
+        prompt_parts.append("C1 ADVANCED SPEAKING PART 1 ASSESSMENT")
+        prompt_parts.append("="*80)
         prompt_parts.append(f"Session mode: {session_data.get('mode', 'unknown')}")
         prompt_parts.append(f"Target level: {options.get('target_level', 'C1') if options else 'C1'}")
-        prompt_parts.append("")
-
-        # Transcript
-        prompt_parts.append("Complete transcript:")
-        prompt_parts.append("-" * 60)
+        prompt_parts.append(f"TRANSCRIPT - CANDIDATE RESPONSES ONLY:")
+        prompt_parts.append("-" * 80)
 
         user_turns = [t for t in turns if t.get("speaker") == "user"]
+        
+        if not user_turns:
+            prompt_parts.append("[No candidate responses recorded]")
+        else:
+            total_words = 0
+            for i, turn in enumerate(user_turns):
+                turn_id = turn.get("id", f"turn_{i}")
+                transcript = turn.get("transcript", "")
+                duration = turn.get("duration_seconds", 0)
+                word_count = len(transcript.split())
+                total_words += word_count
 
-        for i, turn in enumerate(user_turns):
-            turn_id = turn.get("id", f"turn_{i}")
-            transcript = turn.get("transcript", "")
-            duration = turn.get("duration_seconds", 0)
-
-            prompt_parts.append(f"[{turn_id}] ({duration:.1f}s)")
-            prompt_parts.append(transcript)
-            prompt_parts.append("")
-
-        # Audio metrics if available
-        if audio_metrics:
-            prompt_parts.append("Audio metrics:")
-            prompt_parts.append(f"- Total speaking time: {audio_metrics.get('speech_duration_seconds', 0):.1f}s")
-            prompt_parts.append(f"- Speech/silence ratio: {audio_metrics.get('speech_to_silence_ratio', 0):.2f}")
-            prompt_parts.append(f"- Long pauses: {audio_metrics.get('pause_metrics', {}).get('long_pauses', 0)}")
+                prompt_parts.append(f"\n[{turn_id}] Duration: {duration:.1f}s | Words: {word_count}")
+                prompt_parts.append(f"Candidate: {transcript}")
+            
+            prompt_parts.append(f"\n{'-' * 80}")
+            prompt_parts.append(f"AUDIO METRICS:")
+            if audio_metrics:
+                prompt_parts.append(f"- Total speaking time: {audio_metrics.get('speech_duration_seconds', 0):.1f}s")
+                prompt_parts.append(f"- Speech/silence ratio: {audio_metrics.get('speech_to_silence_ratio', 0):.2f}")
+                prompt_parts.append(f"- Long pauses (>1s): {audio_metrics.get('pause_metrics', {}).get('long_pauses', 0)}")
+            else:
+                prompt_parts.append("- Audio metrics were not provided; assess fluency from transcripts and turn durations only.")
             prompt_parts.append("")
 
         # Instructions
-        correction_level = options.get("correction_level", "balanced") if options else "balanced"
-        prompt_parts.append(f"Correction level: {correction_level}")
+        prompt_parts.append("ASSESSMENT TASK:")
+        prompt_parts.append("="*80)
+        prompt_parts.append("Provide a comprehensive C1 Advanced assessment following these requirements:")
+        prompt_parts.append("")
+        prompt_parts.append("1. SCORES (0-5 scale for each criterion):")
+        prompt_parts.append("   - Grammar and Vocabulary (combined: Grammatical Resource + Lexical Resource)")
+        prompt_parts.append("   - Discourse Management")
+        prompt_parts.append("   - Pronunciation (be conservative)")
+        prompt_parts.append("   - Interactive Communication")
+        prompt_parts.append("   - Global Achievement (overall effectiveness)")
+        prompt_parts.append("")
+        prompt_parts.append("2. For EACH score, provide:")
+        prompt_parts.append("   - Specific evidence with turn_id and exact quotes")
+        prompt_parts.append("   - Clear summary of strengths/weaknesses")
+        prompt_parts.append("   - Confidence level (0-1)")
+        prompt_parts.append("   - Any limitations in assessment")
+        prompt_parts.append("")
+        prompt_parts.append("3. CORRECTIONS:")
+        prompt_parts.append("   - List specific errors with:")
+        prompt_parts.append("     * turn_id and original excerpt")
+        prompt_parts.append("     * Corrected version")
+        prompt_parts.append("     * Natural C1 alternative")
+        prompt_parts.append("     * Category (grammar/vocabulary/discourse/pronunciation)")
+        prompt_parts.append("     * Rule or explanation")
+        prompt_parts.append("     * Severity (minor/moderate/major)")
+        prompt_parts.append("")
+        prompt_parts.append("4. STRENGTHS:")
+        prompt_parts.append("   - Specific examples of C1-level language")
+        prompt_parts.append("   - Turn_id references")
+        prompt_parts.append("")
+        prompt_parts.append("5. PRIORITY IMPROVEMENTS:")
+        prompt_parts.append("   - Focus on 3-5 most impactful areas")
+        prompt_parts.append("   - Actionable advice")
+        prompt_parts.append("")
+        prompt_parts.append("6. OVERALL ASSESSMENT:")
+        prompt_parts.append("   - Estimated level (B2/C1_borderline/C1/C1_strong/C2)")
+        prompt_parts.append("   - Summary (2-3 sentences)")
+        prompt_parts.append("")
+        prompt_parts.append("Remember: Be specific, evidence-based, and constructive!")
+        prompt_parts.append("="*80)
         prompt_parts.append("")
         prompt_parts.append("Provide a complete, evidence-based assessment following the required JSON schema.")
 
@@ -212,6 +338,7 @@ Remember:
         )
 
         return Assessment(
+            session_id=turns[0].get("sessionId") if turns else None,
             estimated_overall_level="C1_borderline",
             overall_summary="Technical issue during assessment. Please review the transcript manually or retry assessment.",
             scores=AssessmentScores(

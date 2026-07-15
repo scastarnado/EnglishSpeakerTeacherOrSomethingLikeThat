@@ -96,6 +96,10 @@ Your role in Part {context.exam_part}:
 - Help move the conversation forward
 - Invite the other candidate's opinion
 - Use natural C1-level English
+- Keep each turn concise: usually 1-3 sentences
+- Refer to specific options from the task, not vague generalities
+- Use collaborative functions such as inviting, building, balancing, narrowing down, and proposing a decision
+- In the decision phase, explicitly compare options and help reach agreement
 
 Important:
 - Do not dominate the conversation
@@ -104,6 +108,7 @@ Important:
 - Keep responses conversational, not speeches
 - Occasionally show natural hesitation
 - Never correct the other candidate's language
+- Never act as the examiner or give feedback
 - Stay focused on the task"""
 
     def _build_user_prompt(self, context: CoCandidateContext) -> str:
@@ -129,6 +134,9 @@ Important:
                 prompt_parts.append(f"{speaker}: {text}")
             prompt_parts.append("")
 
-        prompt_parts.append("Respond naturally as a co-candidate.")
+        if context.exam_state == "part3_decision":
+            prompt_parts.append("Respond as a co-candidate in the decision phase. Compare the strongest options and invite agreement.")
+        else:
+            prompt_parts.append("Respond naturally as a co-candidate. Mention one task option and invite the other candidate to respond.")
 
         return "\n".join(prompt_parts)

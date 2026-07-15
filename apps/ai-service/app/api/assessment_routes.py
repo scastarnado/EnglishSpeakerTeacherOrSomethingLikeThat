@@ -1,7 +1,7 @@
 """API routes for assessment generation."""
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import app.main
 from app.main import verify_auth_token
@@ -12,12 +12,15 @@ router = APIRouter()
 
 class AssessmentRequest(BaseModel):
     """Request for assessment generation."""
+    
+    class Config:
+        populate_by_name = True
 
-    session_id: str
+    session_id: str = Field(alias="sessionId")
     session: Dict[str, Any]
     turns: List[Dict[str, Any]]
-    audio_metrics: Optional[Dict[str, Any]] = None
-    previous_mistakes: Optional[List[Any]] = None
+    audio_metrics: Optional[Dict[str, Any]] = Field(None, alias="audioMetrics")
+    previous_mistakes: Optional[List[Any]] = Field(None, alias="previousMistakes")
     options: Optional[Dict[str, Any]] = None
 
 

@@ -5,18 +5,23 @@ import hashlib
 from pathlib import Path
 from typing import Optional
 import asyncio
-import wave
-import pyttsx3
-from concurrent.futures import ThreadPoolExecutor
+import mutagen.mp3
 
 
 class TTSService:
-    """Text-to-speech synthesis service."""
+    """Text-to-speech synthesis service using Edge TTS."""
 
     def __init__(self, cache_dir: str = "./cache/tts"):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        
+        # Map friendly voice names to Edge TTS voice IDs
+        self.voice_map = {
+            "british_male": "en-GB-RyanNeural",
+            "british_female": "en-GB-SoniaNeural",
+            "american_male": "en-US-GuyNeural",
+            "american_female": "en-US-JennyNeural",
+        }
 
     async def synthesize(
         self,
@@ -25,7 +30,7 @@ class TTSService:
         speed: float = 1.0,
         cache_key: Optional[str] = None,
     ) -> dict:
-        """Synthesize speech from text."""
+        """Synthesize speech from text using Edge TTS."""
 
         # Generate cache key
         if cache_key:
@@ -34,98 +39,84 @@ class TTSService:
             content_hash = hashlib.md5(f"{text}_{voice}_{speed}".encode()).hexdigest()
             file_key = content_hash
 
-        cache_path = self.cache_dir / f"{file_key}.wav"
+        # Use MP3 format (Edge TTS native output, browsers support it)
+        cache_path = self.cache_dir / f"{file_key}.mp3"
 
         # Check cache
         if cache_path.exists():
             duration = self._get_audio_duration(str(cache_path))
             return {
-                "audio_path": str(cache_path.absolute()),  # Return absolute path
+                "audio_path": str(cache_path.absolute()),
                 "duration_seconds": duration,
                 "from_cache": True,
             }
 
-        # Synthesize using pyttsx3
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            self.executor,
-            self._synthesize_sync,
-            text,
-            str(cache_path),
-            speed
-        )
-
-        duration = self._get_audio_duration(str(cache_path))
-
-        return {
-            "audio_path": str(cache_path.absolute()),  # Return absolute path
-            "duration_seconds": duration,
-            "from_cache": False,
-        }
-
-    def _synthesize_sync(self, text: str, output_path: str, speed: float):
-        """Synchronous TTS synthesis using pyttsx3."""
+        # Synthesize using Edge TTS
         try:
-            print(f"[TTS] Starting synthesis for text: '{text[:50]}...'")
-            print(f"[TTS] Output path: {output_path}")
+            print(f"[TTS] Starting Edge TTS synthesis for text: '{text[:50]}...'")
+            print(f"[TTS] Output path: {cache_path}")
             
-            engine = pyttsx3.init()
-            print(f"[TTS] Engine initialized")
+            # Import edge_tts here to avoid issues if not installed
+            import edge_tts
             
-            # Set properties
-            engine.setProperty('rate', int(150 * speed))  # Default is ~200, adjust based on speed
-            print(f"[TTS] Rate set to: {int(150 * speed)}")
+            # Get Edge TTS voice ID
+            edge_voice = self.voice_map.get(voice, "en-GB-RyanNeural")
+            print(f"[TTS] Using Edge voice: {edge_voice}, speed: {speed}")
             
-            # Try to set a better quality voice if available
-            voices = engine.getProperty('voices')
-            print(f"[TTS] Available voices: {len(voices) if voices else 0}")
-            if voices:
-                # Prefer voices with 'English' in name
-                english_voices = [v for v in voices if 'english' in v.name.lower() or 'en' in v.id.lower()]
-                if english_voices:
-                    print(f"[TTS] Using voice: {english_voices[0].name}")
-                    engine.setProperty('voice', english_voices[0].id)
+            # Adjust rate for Edge TTS (format: +X% or -X%)
+            rate_percent = int((speed - 1.0) * 50)  # Convert speed to percentage
+            rate_str = f"+{rate_percent}%" if rate_percent >= 0 else f"{rate_percent}%"
             
-            # Save to file
-            print(f"[TTS] Calling save_to_file...")
-            engine.save_to_file(text, output_path)
-            engine.runAndWait()
-            print(f"[TTS] Synthesis complete")
+            # Create communicate object and save directly to MP3
+            communicate = edge_tts.Communicate(text, edge_voice, rate=rate_str)
+            await communicate.save(str(cache_path))
             
-            # Check if file was created and has content
-            if os.path.exists(output_path):
-                file_size = os.path.getsize(output_path)
-                print(f"[TTS] Audio file created: {output_path} ({file_size} bytes)")
-                if file_size == 0:
-                    print(f"[TTS] WARNING: Audio file is empty!")
+            print(f"[TTS] Edge TTS synthesis complete")
+            
+            # Check if file was created
+            if cache_path.exists():
+                file_size = cache_path.stat().st_size
+                print(f"[TTS] Audio file created: {cache_path} ({file_size} bytes)")
             else:
                 print(f"[TTS] ERROR: Audio file was not created!")
+                raise Exception("Audio file was not created")
             
         except Exception as e:
             print(f"[TTS] Error during synthesis: {e}")
             import traceback
             traceback.print_exc()
-            # Create empty file as fallback
-            Path(output_path).touch()
-            print(f"[TTS] Created empty fallback file")
+            raise
+
+        duration = self._get_audio_duration(str(cache_path))
+
+        return {
+            "audio_path": str(cache_path.absolute()),
+            "duration_seconds": duration,
+            "from_cache": False,
+        }
 
     def _get_audio_duration(self, file_path: str) -> float:
-        """Get duration of WAV file in seconds."""
+        """Get duration of MP3 file in seconds."""
         try:
-            with wave.open(file_path, 'rb') as wav_file:
-                frames = wav_file.getnframes()
-                rate = wav_file.getframerate()
-                duration = frames / float(rate)
-                return duration
-        except Exception:
-            # Estimate based on text length (rough approximation)
-            return 2.0
+            audio = mutagen.mp3.MP3(file_path)
+            return float(audio.info.length)
+        except Exception as e:
+            print(f"[TTS] Error getting audio duration: {e}")
+            # Estimate based on file size (rough approximation: 128kbps = ~16KB/sec)
+            try:
+                file_size = os.path.getsize(file_path)
+                estimated_duration = file_size / 16000
+                return max(1.0, estimated_duration)
+            except:
+                return 2.0
 
     def get_available_voices(self) -> list:
         """Get list of available voices."""
         return [
-            {"id": "british_male", "name": "British Male", "language": "en-GB"},
-            {"id": "british_female", "name": "British Female", "language": "en-GB"},
+            {"id": "british_male", "name": "British Male (Ryan)", "language": "en-GB"},
+            {"id": "british_female", "name": "British Female (Sonia)", "language": "en-GB"},
+            {"id": "american_male", "name": "American Male (Guy)", "language": "en-US"},
+            {"id": "american_female", "name": "American Female (Jenny)", "language": "en-US"},
         ]
 
     async def cleanup(self):

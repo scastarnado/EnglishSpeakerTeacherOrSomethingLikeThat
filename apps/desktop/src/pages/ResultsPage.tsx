@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, Trophy, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Trophy, AlertCircle, ChevronDown, ChevronUp, Copy, RotateCcw } from 'lucide-react';
 import type { Session, Assessment, Turn } from '@shared/index';
 
 export default function ResultsPage() {
@@ -11,8 +11,12 @@ export default function ResultsPage() {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState(loadWeaknessTracker);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     scores: true,
+    dashboard: true,
+    comparisons: false,
+    reviewQueue: true,
     strengths: true,
     corrections: false,
   });
@@ -22,6 +26,15 @@ export default function ResultsPage() {
       loadResults();
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    if (assessment) {
+      updateWeaknessTracker(assessment);
+    }
+  }, [assessment]);
+
+  const c1Dashboard = useMemo(() => buildC1Dashboard(turns, assessment), [turns, assessment]);
+  const answerComparisons = useMemo(() => buildAnswerComparisons(turns), [turns]);
 
   async function loadResults() {
     try {
@@ -92,6 +105,160 @@ export default function ResultsPage() {
     return 'Needs Work';
   }
 
+  async function retakeSameSetup() {
+    if (!session) return;
+    try {
+      const newSession = await window.electronAPI.session.create(session.config);
+      navigate(`/session/${newSession.id}`);
+    } catch (error) {
+      console.error('Failed to retake session:', error);
+      alert('Could not start a new session with the same setup.');
+    }
+  }
+
+  async function copyTranscript() {
+    const transcript = turns
+      .map((turn) => `${turn.speaker.toUpperCase()} [Part ${turn.partNumber ?? '-'}]: ${turn.transcript}`)
+      .join('\n\n');
+
+    try {
+      await navigator.clipboard.writeText(transcript);
+      alert('Transcript copied to clipboard.');
+    } catch (error) {
+      console.error('Failed to copy transcript:', error);
+      alert('Could not copy transcript.');
+    }
+  }
+
+  function updateWeaknessTracker(currentAssessment: Assessment) {
+    const processedKey = 'c1sc.processedAssessments';
+    const processedAssessments = loadProcessedAssessments(processedKey);
+    if (processedAssessments.includes(currentAssessment.id)) {
+      setReviewQueue(loadWeaknessTracker());
+      return;
+    }
+
+    const existing = loadWeaknessTracker();
+    const updates = [
+      ...currentAssessment.corrections.map((correction) => ({
+        area: correction.category,
+        reason: correction.ruleOrExplanation,
+      })),
+      ...currentAssessment.priorityImprovements.map((item) => ({
+        area: item.area,
+        reason: item.reason,
+      })),
+    ];
+
+    const next = [...existing];
+    for (const update of updates) {
+      const key = `${update.area}:${update.reason}`.slice(0, 160);
+      const found = next.find((item) => item.key === key);
+      if (found) {
+        found.count += 1;
+        found.lastSeen = new Date().toISOString();
+      } else {
+        next.push({
+          key,
+          area: update.area,
+          reason: update.reason,
+          count: 1,
+          lastSeen: new Date().toISOString(),
+        });
+      }
+    }
+
+    const sorted = next.sort((a, b) => b.count - a.count).slice(0, 30);
+    localStorage.setItem('c1sc.weaknessTracker', JSON.stringify(sorted));
+    localStorage.setItem(
+      processedKey,
+      JSON.stringify([...processedAssessments, currentAssessment.id].slice(-200)),
+    );
+    setReviewQueue(sorted);
+  }
+
+  function loadProcessedAssessments(storageKey: string): string[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function loadWeaknessTracker(): Array<{ key: string; area: string; reason: string; count: number; lastSeen: string }> {
+    try {
+      return JSON.parse(localStorage.getItem('c1sc.weaknessTracker') || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  function buildC1Dashboard(currentTurns: Turn[], currentAssessment: Assessment | null) {
+    const userTurns = currentTurns.filter((turn) => turn.speaker === 'user');
+    const words = userTurns.flatMap((turn) => turn.transcript.toLowerCase().match(/\b[a-z']+\b/g) || []);
+    const stopWords = new Set(['the', 'and', 'to', 'a', 'of', 'in', 'it', 'is', 'i', 'you', 'that', 'for', 'with', 'on', 'this', 'they', 'are', 'was', 'but', 'so', 'because']);
+    const wordCounts = words
+      .filter((word) => word.length > 3 && !stopWords.has(word))
+      .reduce<Record<string, number>>((acc, word) => {
+        acc[word] = (acc[word] || 0) + 1;
+        return acc;
+      }, {});
+    const overusedWords = Object.entries(wordCounts)
+      .filter(([, count]) => count >= 3)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+    const discourseMarkers = ['however', 'whereas', 'although', 'nevertheless', 'therefore', 'moreover', 'consequently', 'on the other hand', 'for instance'];
+    const markerHits = discourseMarkers.filter((marker) => userTurns.some((turn) => turn.transcript.toLowerCase().includes(marker)));
+    const answerLengthByPart = [1, 2, 3, 4].map((part) => {
+      const partTurns = userTurns.filter((turn) => turn.partNumber === part);
+      const totalWords = partTurns.reduce((sum, turn) => sum + turn.wordCount, 0);
+      return { part, turns: partTurns.length, totalWords, averageWords: partTurns.length ? Math.round(totalWords / partTurns.length) : 0 };
+    });
+    const fillerPattern = words.filter((word) => ['um', 'uh', 'like', 'basically', 'actually'].includes(word)).length;
+
+    return {
+      c1RangeUsed: markerHits.length
+        ? markerHits.join(', ')
+        : 'Few explicit C1 discourse markers detected in the transcript.',
+      missedOpportunities:
+        markerHits.length < 3
+          ? 'Use more contrast, concession and consequence language: although, whereas, nevertheless, consequently.'
+          : 'Good variety of linking language. Keep developing examples and nuance.',
+      weakDiscoursePatterns:
+        userTurns.some((turn) => turn.wordCount < 20)
+          ? 'Some answers are short; extend with reason + example + consequence.'
+          : 'Answer length is generally adequate; focus on sharper organisation.',
+      overusedWords,
+      fillerPattern,
+      answerLengthByPart,
+      nextDrills: currentAssessment?.priorityImprovements?.length
+        ? currentAssessment.priorityImprovements.map((item) => item.recommendedExerciseType || item.area).slice(0, 4)
+        : ['Part 2 one-minute comparison', 'Part 4 abstract opinion expansion', 'Discourse marker substitution'],
+    };
+  }
+
+  function buildAnswerComparisons(currentTurns: Turn[]) {
+    return currentTurns
+      .filter((turn) => turn.speaker === 'user')
+      .slice(0, 6)
+      .map((turn) => {
+        const cleaned = turn.transcript.replace(/\b(um|uh)\b/gi, '').replace(/\s+/g, ' ').trim();
+        return {
+          id: turn.id,
+          part: turn.partNumber,
+          original: turn.transcript,
+          natural: cleaned
+            ? `A natural C1 version would keep your main idea but organise it more clearly: ${cleaned}`
+            : 'No transcript available for this turn.',
+          stronger: cleaned
+            ? `A stronger C1/C2 answer would add contrast, a concrete example, and a short evaluation of why the point matters.`
+            : 'Try recording a fuller answer to generate a stronger comparison.',
+          why: 'C1 answers usually show control through structure: clear position, developed reason, specific example, and nuanced conclusion.',
+        };
+      });
+  }
+
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -150,6 +317,122 @@ export default function ResultsPage() {
       </div>
 
       {/* Scores */}
+      <div className="mb-6">
+        <button
+          onClick={() => toggleSection('dashboard')}
+          className="flex items-center justify-between w-full p-4 rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <h2 className="text-xl font-semibold">C1 Speaking Dashboard</h2>
+          {expandedSections.dashboard ? <ChevronUp /> : <ChevronDown />}
+        </button>
+
+        {expandedSections.dashboard && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-lg border border-border bg-card">
+              <h3 className="font-semibold mb-2">C1 Range Used</h3>
+              <p className="text-sm text-muted-foreground">{c1Dashboard.c1RangeUsed}</p>
+            </div>
+            <div className="p-4 rounded-lg border border-border bg-card">
+              <h3 className="font-semibold mb-2">Missed Opportunities</h3>
+              <p className="text-sm text-muted-foreground">{c1Dashboard.missedOpportunities}</p>
+            </div>
+            <div className="p-4 rounded-lg border border-border bg-card">
+              <h3 className="font-semibold mb-2">Weak Discourse Pattern</h3>
+              <p className="text-sm text-muted-foreground">{c1Dashboard.weakDiscoursePatterns}</p>
+            </div>
+            <div className="p-4 rounded-lg border border-border bg-card">
+              <h3 className="font-semibold mb-2">Overused Words</h3>
+              <p className="text-sm text-muted-foreground">
+                {c1Dashboard.overusedWords.length
+                  ? c1Dashboard.overusedWords.map(([word, count]) => `${word} (${count})`).join(', ')
+                  : 'No repeated content words detected strongly enough to flag.'}
+              </p>
+            </div>
+            <div className="p-4 rounded-lg border border-border bg-card">
+              <h3 className="font-semibold mb-2">Answer Length By Part</h3>
+              <div className="grid grid-cols-4 gap-2 text-sm">
+                {c1Dashboard.answerLengthByPart.map((item) => (
+                  <div key={item.part} className="rounded bg-muted/50 p-2 text-center">
+                    <div className="font-semibold">Part {item.part}</div>
+                    <div className="text-xs text-muted-foreground">{item.averageWords} avg words</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 rounded-lg border border-border bg-card">
+              <h3 className="font-semibold mb-2">Next Drills</h3>
+              <div className="flex flex-wrap gap-2">
+                {c1Dashboard.nextDrills.map((drill, index) => (
+                  <span key={`${drill}-${index}`} className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">
+                    {drill}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Answer Comparisons */}
+      <div className="mb-6">
+        <button
+          onClick={() => toggleSection('comparisons')}
+          className="flex items-center justify-between w-full p-4 rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <h2 className="text-xl font-semibold">Answer Model Comparison</h2>
+          {expandedSections.comparisons ? <ChevronUp /> : <ChevronDown />}
+        </button>
+
+        {expandedSections.comparisons && (
+          <div className="mt-4 space-y-3">
+            {answerComparisons.map((item) => (
+              <div key={item.id} className="p-4 rounded-lg border border-border bg-card">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">Part {item.part}</p>
+                <div className="space-y-2 text-sm">
+                  <p><strong>Your transcript:</strong> {item.original}</p>
+                  <p><strong>Natural C1 direction:</strong> {item.natural}</p>
+                  <p><strong>Stronger C1/C2 direction:</strong> {item.stronger}</p>
+                  <p className="text-muted-foreground"><strong>Why:</strong> {item.why}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Review Queue */}
+      <div className="mb-6">
+        <button
+          onClick={() => toggleSection('reviewQueue')}
+          className="flex items-center justify-between w-full p-4 rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <h2 className="text-xl font-semibold">Personal Review Queue</h2>
+          {expandedSections.reviewQueue ? <ChevronUp /> : <ChevronDown />}
+        </button>
+
+        {expandedSections.reviewQueue && (
+          <div className="mt-4 space-y-3">
+            {reviewQueue.length ? reviewQueue.slice(0, 8).map((item) => (
+              <div key={item.key} className="p-4 rounded-lg border border-border bg-card">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold capitalize">{item.area}</h3>
+                    <p className="text-sm text-muted-foreground">{item.reason}</p>
+                  </div>
+                  <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">
+                    seen {item.count}x
+                  </span>
+                </div>
+              </div>
+            )) : (
+              <div className="p-4 rounded-lg border border-border bg-card text-sm text-muted-foreground">
+                No recurring weaknesses yet. Complete more sessions to build your review queue.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="mb-6">
         <button
           onClick={() => toggleSection('scores')}
@@ -272,10 +555,24 @@ export default function ResultsPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-4">
+        <button
+          onClick={retakeSameSetup}
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          <RotateCcw className="h-4 w-4" />
+          Retake Same Setup
+        </button>
+        <button
+          onClick={copyTranscript}
+          className="flex items-center gap-2 px-6 py-3 border border-border rounded-lg hover:bg-accent transition-colors"
+        >
+          <Copy className="h-4 w-4" />
+          Copy Transcript
+        </button>
         <button
           onClick={() => navigate('/')}
-          className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          className="px-6 py-3 border border-border rounded-lg hover:bg-accent transition-colors"
         >
           Practice Again
         </button>

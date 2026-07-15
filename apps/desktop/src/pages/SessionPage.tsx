@@ -1,7 +1,177 @@
-import type { InterlocutorResponse, Session, Turn } from '@shared/index';
-import { Loader2, Mic, Square } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import type { CoCandidateResponse, InterlocutorResponse, Session, Turn } from '@shared/index';
+import {
+  CheckCircle2,
+  Clock,
+  Expand,
+  Keyboard,
+  Loader2,
+  Mic,
+  MessageSquare,
+  RotateCcw,
+  Square,
+  Users,
+  X,
+} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import {
+  getDiscussionTaskSetForSession,
+  getPart2TaskForSession,
+  type DiscussionTaskSet,
+  type SpeakingTaskLite,
+} from '../data/speakingTasks';
+
+type ExamStep = {
+  id: string;
+  part: 1 | 2 | 3 | 4;
+  state:
+    | 'introduction'
+    | 'part1_interview'
+    | 'part2_instructions'
+    | 'part2_long_turn'
+    | 'part2_follow_up'
+    | 'part3_instructions'
+    | 'part3_collaborative'
+    | 'part3_decision'
+    | 'part4_discussion';
+  title: string;
+  subtitle: string;
+  timerLabel: string;
+  targetSeconds: number;
+  examinerPurpose: string;
+  userActionLabel: string;
+  task?: SpeakingTaskLite;
+  needsCoCandidate?: boolean;
+};
+
+const PART1_STEPS: ExamStep[] = [
+  {
+    id: 'p1-intro',
+    part: 1,
+    state: 'introduction',
+    title: 'Part 1 Interview',
+    subtitle: 'Personal questions about you, your life and interests',
+    timerLabel: '2 min',
+    targetSeconds: 120,
+    examinerPurpose: 'Open the test and ask the first personal question.',
+    userActionLabel: 'Answer the examiner',
+  },
+  ...Array.from({ length: 5 }, (_, index) => ({
+    id: `p1-q${index + 1}`,
+    part: 1 as const,
+    state: 'part1_interview' as const,
+    title: 'Part 1 Interview',
+    subtitle: 'Answer naturally, with enough detail to show C1 range',
+    timerLabel: '2 min',
+    targetSeconds: 120,
+    examinerPurpose: 'Acknowledge briefly and ask the next Part 1 question.',
+    userActionLabel: 'Answer the question',
+  })),
+];
+
+function buildPart2Steps(part2Task: SpeakingTaskLite): ExamStep[] {
+  return [
+    {
+    id: 'p2-instructions',
+    part: 2,
+    state: 'part2_instructions',
+    title: 'Part 2 Long Turn',
+    subtitle: 'Compare, speculate and evaluate from a visual prompt',
+    timerLabel: '1 min long turn',
+    targetSeconds: 60,
+    examinerPurpose: 'Give official Part 2 instructions: three pictures, choose two, speak for about one minute.',
+    userActionLabel: 'Give your long turn',
+    task: part2Task,
+    },
+    {
+    id: 'p2-follow-up',
+    part: 2,
+    state: 'part2_follow_up',
+    title: 'Part 2 Follow-up',
+    subtitle: 'Answer one short follow-up question',
+    timerLabel: '30 sec',
+    targetSeconds: 30,
+    examinerPurpose: 'Ask the Part 2 follow-up question only.',
+    userActionLabel: 'Answer briefly',
+    task: part2Task,
+    },
+  ];
+}
+
+function buildPart3Steps(discussionSet: DiscussionTaskSet): ExamStep[] {
+  return [
+    {
+    id: 'p3-instructions',
+    part: 3,
+    state: 'part3_instructions',
+    title: 'Part 3 Collaborative Task',
+    subtitle: 'Discuss options with another candidate and work toward a decision',
+    timerLabel: '2 min discussion',
+    targetSeconds: 120,
+    examinerPurpose: 'Give official Part 3 instructions and present the options for the two-minute discussion phase.',
+    userActionLabel: 'Start the discussion',
+    task: discussionSet.part3,
+    needsCoCandidate: true,
+    },
+    {
+    id: 'p3-decision',
+    part: 3,
+    state: 'part3_decision',
+    title: 'Part 3 Decision',
+    subtitle: 'Reach a reasoned decision with your partner',
+    timerLabel: '1 min',
+    targetSeconds: 60,
+    examinerPurpose: 'Ask candidates to decide which two options are most important.',
+    userActionLabel: 'Make a decision',
+    task: discussionSet.part3,
+    needsCoCandidate: true,
+    },
+  ];
+}
+
+function buildPart4Steps(discussionSet: DiscussionTaskSet): ExamStep[] {
+  return discussionSet.part4.questions.map((question, index) => ({
+    id: `p4-q${index + 1}`,
+    part: 4 as const,
+    state: 'part4_discussion' as const,
+    title: 'Part 4 Discussion',
+    subtitle: 'Develop abstract answers and justify your opinions',
+    timerLabel: 'examiner-led',
+    targetSeconds: 75,
+    examinerPurpose: `Ask this Part 4 question: "${question}"`,
+    userActionLabel: 'Answer with reasons',
+    task: { ...discussionSet.part4, questions: [question] },
+  }));
+}
+
+function buildFullExamSteps(part2Task: SpeakingTaskLite, discussionSet: DiscussionTaskSet): ExamStep[] {
+  return [
+    ...PART1_STEPS,
+    ...buildPart2Steps(part2Task),
+    ...buildPart3Steps(discussionSet),
+    ...buildPart4Steps(discussionSet),
+  ];
+}
+
+function buildExamPlan(sessionData: Session): ExamStep[] {
+  const part2Task = getPart2TaskForSession(sessionData.id);
+  const discussionSet = getDiscussionTaskSetForSession(sessionData.id);
+  const parts = sessionData.config.parts;
+
+  if (!parts || parts.length === 0) {
+    return buildFullExamSteps(part2Task, discussionSet);
+  }
+
+  const selectedSteps = parts.flatMap((part) => {
+    if (part === 1) return PART1_STEPS;
+    if (part === 2) return buildPart2Steps(part2Task);
+    if (part === 3) return buildPart3Steps(discussionSet);
+    if (part === 4) return buildPart4Steps(discussionSet);
+    return [];
+  });
+
+  return selectedSteps.length ? selectedSteps : buildFullExamSteps(part2Task, discussionSet);
+}
 
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -11,22 +181,43 @@ export default function SessionPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState<string>('');
+  const [currentPrompt, setCurrentPrompt] = useState('');
   const [examinerSpeaking, setExaminerSpeaking] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
+  const [lastAudioPath, setLastAudioPath] = useState<string | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{ id: string; url: string; altText: string } | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const isGettingQuestionRef = useRef(false);
+  const isGettingPromptRef = useRef(false);
 
-  // Load session on mount
+  const examPlan = useMemo(() => {
+    if (!session) return PART1_STEPS;
+    return buildExamPlan(session);
+  }, [session]);
+
+  const currentStep = examPlan[Math.min(currentStepIndex, examPlan.length - 1)];
+  const isTrainingMode =
+    session?.mode === 'conversation' || session?.mode === 'intensive_correction';
+  const isExamMode = !!session && !isTrainingMode;
+  const progressPercent = Math.round(((currentStepIndex + 1) / examPlan.length) * 100);
+  const hardStopSeconds =
+    isExamMode && (currentStep.part === 2 || currentStep.state === 'part3_instructions' || currentStep.state === 'part3_decision')
+      ? currentStep.targetSeconds
+      : null;
+
   useEffect(() => {
     if (sessionId && !isLoadingSession && !session) {
       loadSession();
     }
 
-    // Cleanup: stop any playing audio on unmount
     return () => {
       if (audioPlayerRef.current) {
         audioPlayerRef.current.pause();
@@ -35,20 +226,68 @@ export default function SessionPage() {
     };
   }, [sessionId]);
 
-  async function loadSession() {
-    if (isLoadingSession) {
-      console.log('Load session already in progress, skipping...');
-      return;
+  useEffect(() => {
+    if (!sessionStartTime) return;
+
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - sessionStartTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessionStartTime]);
+
+  useEffect(() => {
+    if (!recordingStartedAt) return;
+
+    const interval = setInterval(() => {
+      setRecordingSeconds(Math.floor((Date.now() - recordingStartedAt) / 1000));
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [recordingStartedAt]);
+
+  useEffect(() => {
+    if (!isRecording || hardStopSeconds === null) return;
+    if (recordingSeconds >= hardStopSeconds) {
+      stopRecording();
     }
+  }, [isRecording, recordingSeconds, hardStopSeconds]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (isRecording) {
+          stopRecording();
+        } else if (!isProcessing && !examinerSpeaking) {
+          startRecording();
+        }
+      }
+      if (!isExamMode && event.key.toLowerCase() === 'r' && !isRecording && !isProcessing && lastAudioPath) {
+        void replayLastPrompt();
+      }
+      if (event.key === 'Escape') {
+        setSelectedImage(null);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRecording, isProcessing, examinerSpeaking, lastAudioPath, isExamMode]);
+
+  async function loadSession() {
+    if (isLoadingSession) return;
 
     setIsLoadingSession(true);
     try {
       const loadedSession = await window.electronAPI.session.get({ sessionId: sessionId! });
       if (loadedSession) {
         setSession(loadedSession);
+        setSessionStartTime(Date.now());
         await window.electronAPI.session.start({ sessionId: sessionId! });
-        // Start with examiner's first question
-        await getExaminerQuestion(loadedSession);
+        const loadedPlan = buildExamPlan(loadedSession);
+        await playExaminerStep(loadedPlan[0], loadedSession, 0);
       }
     } catch (error) {
       console.error('Failed to load session:', error);
@@ -57,157 +296,169 @@ export default function SessionPage() {
     }
   }
 
-  async function getExaminerQuestion(sessionData?: Session) {
-    const currentSession = sessionData || session;
-    if (!currentSession) {
-      console.error('Cannot get examiner question: session not loaded');
-      return;
-    }
+  async function playExaminerStep(
+    step: ExamStep,
+    sessionData: Session = session!,
+    stepIndex = currentStepIndex,
+  ) {
+    if (!sessionData || isGettingPromptRef.current) return;
 
-    // Prevent duplicate calls using ref (synchronous check)
-    if (isGettingQuestionRef.current) {
-      console.log('getExaminerQuestion already in progress, skipping...');
-      return;
-    }
-
-    isGettingQuestionRef.current = true;
-    console.log('=== STARTING getExaminerQuestion ===');
+    const sessionIsTrainingMode =
+      sessionData.mode === 'conversation' || sessionData.mode === 'intensive_correction';
+    isGettingPromptRef.current = true;
     setExaminerSpeaking(true);
     setIsProcessing(true);
 
     try {
-      console.log('Getting examiner question...');
-
-      // Get all previous turns
-      const previousTurns = await window.electronAPI.db.getTurns({ sessionId: currentSession.id });
-
-      // Determine if this is the first interaction (introduction)
-      const examinerTurns = previousTurns.filter((t: any) => t.speaker === 'examiner');
-      const isFirstInteraction = examinerTurns.length === 0;
-
-      console.log('Is first interaction:', isFirstInteraction);
-
-      // Request examiner response
-      console.log('Calling interlocutorRespond...');
+      const previousTurns: Turn[] = await window.electronAPI.db.getTurns({ sessionId: sessionData.id });
       const response: InterlocutorResponse = await window.electronAPI.ai.interlocutorRespond({
-        sessionId: currentSession.id,
-        mode: currentSession.mode,
-        examPart: isFirstInteraction ? 0 : (currentSession.config.parts?.[0] || 1),
-        examState: isFirstInteraction ? 'introduction' : 'part1_interview',
-        timeRemainingSeconds: 180,
-        questionHistory: [],
-        conversationHistory: previousTurns.map((t: any) => ({
-          speaker: t.speaker,
-          transcript: t.transcript,
-        })),
-        currentTask: undefined,
-        allowedActions: isFirstInteraction
-          ? ['give_instructions', 'ask_question']
-          : ['ask_question', 'brief_acknowledgement'],
-        forbiddenActions: ['correct_language', 'give_score'],
+        sessionId: sessionData.id,
+        mode: sessionData.mode,
+        examPart: step.part,
+        examState: step.state,
+        timeRemainingSeconds: step.targetSeconds,
+        questionHistory: previousTurns
+          .filter((turn) => turn.speaker === 'examiner')
+          .map((turn) => turn.transcript),
+        conversationHistory: previousTurns.map((turn) => ({
+          speaker: turn.speaker,
+          transcript: turn.transcript,
+        })) as any,
+        currentTask: step.task
+          ? ({ ...step.task, llm_model: sessionData.config.llmModel, examinerPurpose: step.examinerPurpose } as any)
+          : ({ llm_model: sessionData.config.llmModel, examinerPurpose: step.examinerPurpose } as any),
+        allowedActions: ['give_instructions', 'ask_question', 'brief_acknowledgement', 'transition'],
+        forbiddenActions:
+          sessionIsTrainingMode
+            ? ['correct_language', 'give_score', 'give_feedback', 'coach_candidate', 'over_explain']
+            : ['correct_language', 'give_score', 'give_feedback', 'coach_candidate'],
       });
 
-      console.log('Examiner response received:', response.spokenText);
-      setCurrentQuestion(response.spokenText);
+      setCurrentPrompt(response.spokenText);
 
-      // Generate TTS audio
-      console.log('=== Calling TTS Generate ===');
-      console.log('TTS Config:', { text: response.spokenText.substring(0, 50), voice: currentSession.config.ttsVoice, speed: 1.0 });
       const ttsResult = await window.electronAPI.ai.ttsGenerate({
         text: response.spokenText,
-        voice: currentSession.config.ttsVoice,
+        voice: sessionData.config.ttsVoice,
         speed: 1.0,
       });
+      setLastAudioPath(ttsResult.audioPath);
 
-      console.log('=== TTS Result Received ===');
-      console.log('TTS generated path:', ttsResult.audioPath);
-      console.log('TTS duration:', ttsResult.durationSeconds);
-      console.log('From cache:', ttsResult.fromCache);
-
-      // Save examiner turn
       const examinerTurn: Turn = {
         id: crypto.randomUUID(),
-        sessionId: currentSession.id,
-        partNumber: 1,
+        sessionId: sessionData.id,
+        partNumber: step.part,
         sequenceNumber: previousTurns.length,
         speaker: 'examiner',
         startedAt: new Date().toISOString(),
         endedAt: new Date().toISOString(),
         durationSeconds: ttsResult.durationSeconds,
         transcript: response.spokenText,
-        wordCount: response.spokenText.split(' ').length,
+        wordCount: response.spokenText.split(/\s+/).filter(Boolean).length,
       };
 
       await window.electronAPI.db.saveTurn(examinerTurn);
       setTurns((prev) => [...prev, examinerTurn]);
-
-      // Play audio
-      console.log('Playing audio...');
       await playAudio(ttsResult.audioPath);
-      console.log('Audio playback complete');
+
+      if (stepIndex !== currentStepIndex) {
+        setCurrentStepIndex(stepIndex);
+      }
     } catch (error: any) {
-      console.error('Failed to get examiner question:', error);
-      setCurrentQuestion('Could you tell me about your studies?'); // Fallback
-      alert(`Failed to get examiner question: ${error?.message || 'Unknown error'}`);
+      console.error('Failed to get examiner prompt:', error);
+      const fallback = getFallbackPrompt(step);
+      setCurrentPrompt(fallback);
+      alert(`Failed to get examiner prompt: ${error?.message || 'Unknown error'}`);
     } finally {
       setExaminerSpeaking(false);
       setIsProcessing(false);
-      isGettingQuestionRef.current = false; // Reset ref to allow next call
+      isGettingPromptRef.current = false;
+    }
+  }
+
+  async function playCoCandidateTurn(userTurn: Turn, step: ExamStep) {
+    if (!session || !step.task) return;
+
+    setIsProcessing(true);
+    try {
+      const previousTurns: Turn[] = await window.electronAPI.db.getTurns({ sessionId: session.id });
+      const response: CoCandidateResponse = await window.electronAPI.ai.coCandidateRespond({
+        sessionId: session.id,
+        examPart: step.part,
+        examState: step.state,
+        conversationHistory: [...previousTurns, userTurn].map((turn) => ({
+          speaker: turn.speaker,
+          transcript: turn.transcript,
+        })) as any,
+        currentTask: step.task as any,
+        profile: {
+          name: 'Alex',
+          estimatedLevel: 'C1',
+          confidence: 'medium',
+          talkativeness: 'balanced',
+          disagreementFrequency: 'medium',
+          speakingStyle: 'reflective',
+        },
+        discussionOptions: step.task.discussionOptions,
+      });
+
+      const ttsResult = await window.electronAPI.ai.ttsGenerate({
+        text: response.spokenText,
+        voice: session.config.ttsVoice,
+        speed: 1.0,
+      });
+      setLastAudioPath(ttsResult.audioPath);
+
+      const coCandidateTurn: Turn = {
+        id: crypto.randomUUID(),
+        sessionId: session.id,
+        partNumber: step.part,
+        sequenceNumber: previousTurns.length + 1,
+        speaker: 'co_candidate',
+        startedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+        durationSeconds: ttsResult.durationSeconds,
+        transcript: response.spokenText,
+        wordCount: response.spokenText.split(/\s+/).filter(Boolean).length,
+      };
+
+      await window.electronAPI.db.saveTurn(coCandidateTurn);
+      setTurns((prev) => [...prev, coCandidateTurn]);
+      setCurrentPrompt(response.spokenText);
+      await playAudio(ttsResult.audioPath);
+    } catch (error) {
+      console.error('Failed to get co-candidate response:', error);
+    } finally {
+      setIsProcessing(false);
     }
   }
 
   async function playAudio(audioPath: string): Promise<void> {
-    try {
-      console.log('[Audio] Getting audio file from path:', audioPath);
-
-      // Stop any currently playing audio first
-      if (audioPlayerRef.current) {
-        console.log('[Audio] Stopping previous audio playback');
-        audioPlayerRef.current.pause();
-        audioPlayerRef.current = null;
-      }
-
-      // Get audio file from main process
-      const audioData = await window.electronAPI.audio.getFile(audioPath);
-      console.log('[Audio] Received audio data, size:', audioData.length, 'bytes');
-
-      if (audioData.length === 0) {
-        throw new Error('Audio file is empty');
-      }
-
-      // Create blob from audio data
-      const audioBlob = new Blob([audioData], { type: 'audio/wav' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      console.log('[Audio] Created blob URL:', audioUrl);
-
-      // Create and play audio
-      const audio = new Audio(audioUrl);
-      audioPlayerRef.current = audio;
-
-      return new Promise((resolve, reject) => {
-        audio.onended = () => {
-          console.log('[Audio] Playback ended');
-          URL.revokeObjectURL(audioUrl);
-          audioPlayerRef.current = null;
-          resolve();
-        };
-        audio.onerror = (error) => {
-          console.error('[Audio] Playback error:', error);
-          URL.revokeObjectURL(audioUrl);
-          audioPlayerRef.current = null;
-          reject(error);
-        };
-        audio.play()
-          .then(() => console.log('[Audio] Playback started'))
-          .catch((err) => {
-            console.error('[Audio] Play() failed:', err);
-            reject(err);
-          });
-      });
-    } catch (error) {
-      console.error('[Audio] Failed to play audio:', error);
-      throw error;
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current = null;
     }
+
+    const audioData = await window.electronAPI.audio.getFile(audioPath);
+    if (audioData.length === 0) throw new Error('Audio file is empty');
+
+    const audioBlob = new Blob([audioData], { type: 'audio/wav' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    audioPlayerRef.current = audio;
+
+    return new Promise((resolve, reject) => {
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        audioPlayerRef.current = null;
+        resolve();
+      };
+      audio.onerror = (error) => {
+        URL.revokeObjectURL(audioUrl);
+        audioPlayerRef.current = null;
+        reject(error);
+      };
+      audio.play().catch(reject);
+    });
   }
 
   async function startRecording() {
@@ -216,13 +467,9 @@ export default function SessionPage() {
       const mediaRecorder = new MediaRecorder(stream);
 
       audioChunksRef.current = [];
-
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
-
       mediaRecorder.onstop = async () => {
         await processRecording();
         stream.getTracks().forEach((track) => track.stop());
@@ -231,6 +478,8 @@ export default function SessionPage() {
       mediaRecorder.start();
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
+      setRecordingSeconds(0);
+      setRecordingStartedAt(Date.now());
     } catch (error) {
       console.error('Failed to start recording:', error);
       alert('Microphone access denied');
@@ -241,12 +490,12 @@ export default function SessionPage() {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      setRecordingStartedAt(null);
     }
   }
 
   async function processRecording() {
     if (!session) {
-      console.error('Cannot process recording: session not loaded');
       alert('Session error. Please refresh the page.');
       return;
     }
@@ -254,25 +503,15 @@ export default function SessionPage() {
     setIsProcessing(true);
 
     try {
-      // Create audio blob
+      const stepAtRecording = currentStep;
       const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
       const audioBuffer = await audioBlob.arrayBuffer();
       const audioData = new Uint8Array(audioBuffer);
-
-      console.log('Processing recording:', {
-        sessionId: session.id,
-        audioSize: audioData.length
-      });
-
-      // Save audio file
       const { path: audioPath } = await window.electronAPI.audio.saveRecording(
         session.id,
-        audioData
+        audioData,
       );
 
-      console.log('Audio saved to:', audioPath);
-
-      // Transcribe
       const transcription = await window.electronAPI.audio.transcribe({
         audioPath,
         modelSize: session.config.whisperModel as any,
@@ -280,14 +519,12 @@ export default function SessionPage() {
         includeWordTimestamps: true,
       });
 
-      console.log('Transcription complete:', transcription.transcript);
-
-      // Save user turn
+      const savedTurns: Turn[] = await window.electronAPI.db.getTurns({ sessionId: session.id });
       const userTurn: Turn = {
         id: crypto.randomUUID(),
         sessionId: session.id,
-        partNumber: 1,
-        sequenceNumber: turns.length,
+        partNumber: stepAtRecording.part,
+        sequenceNumber: savedTurns.length,
         speaker: 'user',
         startedAt: new Date(Date.now() - transcription.durationSeconds * 1000).toISOString(),
         endedAt: new Date().toISOString(),
@@ -295,16 +532,18 @@ export default function SessionPage() {
         transcript: transcription.transcript,
         asrConfidence: transcription.confidence,
         audioPath,
-        wordCount: transcription.transcript.split(' ').length,
+        wordCount: transcription.transcript.split(/\s+/).filter(Boolean).length,
       };
 
       await window.electronAPI.db.saveTurn(userTurn);
       setTurns((prev) => [...prev, userTurn]);
+      setIsProcessing(false);
 
-      console.log('User turn saved, getting next question...');
+      if (stepAtRecording.needsCoCandidate) {
+        await playCoCandidateTurn(userTurn, stepAtRecording);
+      }
 
-      // Get next examiner response
-      await getExaminerQuestion();
+      await advanceAfterUserTurn();
     } catch (error: any) {
       console.error('Failed to process recording:', error);
       alert(`Failed to process your response: ${error?.message || 'Unknown error'}. Please try again.`);
@@ -313,138 +552,357 @@ export default function SessionPage() {
     }
   }
 
-  async function endSession() {
+  async function advanceAfterUserTurn() {
     if (!session) return;
 
-    try {
-      await window.electronAPI.session.complete({ sessionId: session.id });
-      navigate(`/results/${session.id}`);
-    } catch (error) {
-      console.error('Failed to end session:', error);
+    const nextIndex = currentStepIndex + 1;
+    if (nextIndex >= examPlan.length) {
+      await finishSession();
+      return;
     }
+
+    const nextStep = examPlan[nextIndex];
+    setCurrentStepIndex(nextIndex);
+    await playExaminerStep(nextStep, session, nextIndex);
+  }
+
+  async function finishSession() {
+    if (!session || isComplete) return;
+
+    setIsComplete(true);
+    await window.electronAPI.session.complete({ sessionId: session.id });
+    navigate(`/results/${session.id}`);
+  }
+
+  async function endSession() {
+    if (!session) return;
+    if (!window.confirm('End this session and go to results?')) return;
+    await window.electronAPI.session.complete({ sessionId: session.id });
+    navigate(`/results/${session.id}`);
+  }
+
+  async function replayLastPrompt() {
+    if (!lastAudioPath || isRecording || isProcessing) return;
+    try {
+      setExaminerSpeaking(true);
+      await playAudio(lastAudioPath);
+    } catch (error) {
+      console.error('Failed to replay prompt:', error);
+    } finally {
+      setExaminerSpeaking(false);
+    }
+  }
+
+  function getFallbackPrompt(step: ExamStep): string {
+    if (step.part === 2 && step.task) {
+      return `Now, in this part of the test, I am going to give you three photographs. Please talk about two of them. ${step.task.instructions}`;
+    }
+    if (step.part === 3 && step.task) {
+      return `${step.task.instructions} Here are the options: ${step.task.discussionOptions?.map((option) => option.text).join(', ')}.`;
+    }
+    if (step.part === 4 && step.task) {
+      return step.task.questions[0];
+    }
+    return 'Could you tell me a little about yourself?';
   }
 
   if (!session) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-6 border-b border-border bg-card">
-        <div className="flex items-center justify-between">
+    <div className="flex h-full flex-col bg-background">
+      <div className="border-b border-border bg-card px-6 py-5">
+        <div className="flex items-start justify-between gap-6">
           <div>
-            <h1 className="text-2xl font-bold">Part 1 Interview</h1>
-            <p className="text-sm text-muted-foreground">Personal questions</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-2xl font-bold">3:00</div>
-              <div className="text-xs text-muted-foreground">Remaining</div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="rounded bg-primary/10 px-2 py-1 font-semibold text-primary">
+                {isTrainingMode ? 'Practice mode' : 'Exam mode'}
+              </span>
+              <span>{currentStep.timerLabel}</span>
             </div>
+            <h1 className="text-2xl font-bold">{currentStep.title}</h1>
+            <p className="text-sm text-muted-foreground">{currentStep.subtitle}</p>
+          </div>
+          <div className="flex items-center gap-5">
+            <div className="text-right">
+              <div className="text-2xl font-bold">
+                {Math.floor(elapsedSeconds / 60)}:{(elapsedSeconds % 60).toString().padStart(2, '0')}
+              </div>
+              <div className="text-xs text-muted-foreground">Elapsed</div>
+            </div>
+            {!isExamMode && (
+              <button
+                onClick={replayLastPrompt}
+                disabled={!lastAudioPath || isRecording || isProcessing}
+                className="rounded-md border border-border px-4 py-2 transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2">
+                  <RotateCcw className="h-4 w-4" />
+                  Replay
+                </span>
+              </button>
+            )}
             <button
               onClick={endSession}
-              className="px-4 py-2 border border-border rounded-md hover:bg-accent transition-colors"
+              className="rounded-md border border-border px-4 py-2 transition-colors hover:bg-accent"
             >
               End Session
             </button>
           </div>
         </div>
+        <div className="mt-5 h-2 overflow-hidden rounded bg-muted">
+          <div className="h-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
+        </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6">
-        {/* Current Question */}
-        {currentQuestion && (
-          <div className="mb-6 p-6 rounded-lg bg-primary/10 border border-primary/20">
-            <div className="flex items-start gap-4">
-              <div className="w-2 h-2 rounded-full bg-primary mt-2"></div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-primary mb-1">Examiner</p>
-                <p className="text-lg">{currentQuestion}</p>
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_1fr]">
+        <aside className="border-b border-border bg-muted/30 p-5 lg:border-b-0 lg:border-r">
+          <div className="mb-5 grid grid-cols-4 gap-2">
+            {[1, 2, 3, 4].map((part) => {
+              const partActive = currentStep.part === part;
+              const partIncluded = examPlan.some((step) => step.part === part);
+              return (
+                <div
+                  key={part}
+                  className={`rounded-md border px-3 py-2 text-center text-sm ${
+                    partActive
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : partIncluded
+                        ? 'border-border bg-card'
+                        : 'border-border bg-muted text-muted-foreground opacity-60'
+                  }`}
+                >
+                  Part {part}
+                </div>
+              );
+            })}
+          </div>
+
+          {currentStep.task && (
+            <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Task</p>
+                <h2 className="mt-1 font-semibold">{currentStep.task.title}</h2>
               </div>
+              <p className="text-sm text-muted-foreground">{currentStep.task.instructions}</p>
+              {currentStep.task.discussionOptions && (
+                <div className="space-y-2">
+                  {currentStep.task.discussionOptions.map((option) => (
+                    <div key={option.id} className="rounded-md border border-border bg-background px-3 py-2 text-sm">
+                      {option.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {currentStep.part === 2 && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    {currentStep.task.imageAssets?.map((image) => (
+                      <button
+                        key={image.id}
+                        onClick={() => !isExamMode && setSelectedImage(image)}
+                        className={`overflow-hidden rounded-md border border-border bg-background text-left transition-colors ${
+                          isExamMode ? 'cursor-default' : 'hover:border-primary'
+                        }`}
+                      >
+                        <div className="relative aspect-[4/3]">
+                          <img
+                            src={image.url}
+                            alt={image.altText}
+                            className="h-full w-full object-cover"
+                          />
+                          <figcaption className="absolute left-2 top-2 rounded bg-background/90 px-2 py-1 text-xs font-bold">
+                            {image.id}
+                          </figcaption>
+                          {!isExamMode && (
+                            <span className="absolute bottom-2 right-2 rounded bg-background/90 p-1">
+                              <Expand className="h-3.5 w-3.5" />
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Talk about two pictures only. Do not describe all three.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-5 rounded-lg border border-border bg-card p-4">
+            <div className="mb-3 flex items-center gap-2 font-semibold">
+              <Clock className="h-4 w-4 text-primary" />
+              Exam rhythm
+            </div>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>Answer once per prompt, then let the examiner move the test forward.</p>
+              <p className="flex items-center gap-2">
+                <Keyboard className="h-4 w-4" />
+                Space starts/stops recording{isExamMode ? '.' : '. R replays the latest prompt.'}
+              </p>
+              {isTrainingMode ? (
+                <p>Practice mode keeps the interlocutor realistic and gives learning-focused feedback afterward.</p>
+              ) : (
+                <p>Exam mode withholds corrections and scoring until the results page.</p>
+              )}
             </div>
           </div>
-        )}
+        </aside>
 
-        {/* Conversation History */}
-        <div className="space-y-4">
-          {turns.slice(-6).map((turn) => (
-            <div
-              key={turn.id}
-              className={`p-4 rounded-lg ${turn.speaker === 'user'
-                ? 'bg-accent/50 ml-12'
-                : 'bg-muted/50 mr-12'
-                }`}
-            >
-              <div className="flex items-start gap-3">
-                <div className="text-xs font-semibold text-muted-foreground uppercase">
-                  {turn.speaker}
-                </div>
+        <main className="min-h-0 overflow-auto p-6">
+          {currentPrompt && (
+            <div className="mb-6 rounded-lg border border-primary/20 bg-primary/10 p-5">
+              <div className="flex items-start gap-4">
+                <MessageSquare className="mt-1 h-5 w-5 text-primary" />
                 <div className="flex-1">
-                  <p>{turn.transcript}</p>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {turn.durationSeconds.toFixed(1)}s
-                    {turn.asrConfidence && ` • Confidence: ${(turn.asrConfidence * 100).toFixed(0)}%`}
+                  <p className="mb-1 text-sm font-semibold text-primary">
+                    {turns.at(-1)?.speaker === 'co_candidate' ? 'Co-candidate' : 'Examiner'}
+                  </p>
+                  <p className="text-lg leading-relaxed">{currentPrompt}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isExamMode ? (
+            <div className="rounded-lg border border-border bg-card p-6 text-center">
+              <p className="font-semibold">Exam in progress</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Transcripts are hidden in Exam Mode. You will review everything on the results page.
+              </p>
+            </div>
+          ) : (
+          <div className="space-y-4">
+            {turns.slice(-10).map((turn) => (
+              <div
+                key={turn.id}
+                className={`rounded-lg p-4 ${
+                  turn.speaker === 'user'
+                    ? 'ml-10 bg-accent/60'
+                    : turn.speaker === 'co_candidate'
+                      ? 'mr-10 border border-border bg-card'
+                      : 'mr-10 bg-muted/60'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">
+                    {turn.speaker === 'co_candidate' ? 'partner' : turn.speaker}
+                  </div>
+                  <div className="flex-1">
+                    <p>{turn.transcript}</p>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Part {turn.partNumber} - {turn.durationSeconds.toFixed(1)}s
+                      {turn.asrConfidence && ` - Confidence: ${(turn.asrConfidence * 100).toFixed(0)}%`}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Processing Indicator */}
-        {isProcessing && (
-          <div className="flex items-center justify-center py-8 gap-3 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span>
-              {examinerSpeaking ? 'Examiner is thinking...' : 'Transcribing your response...'}
-            </span>
+            ))}
           </div>
-        )}
+          )}
+
+          {isProcessing && (
+            <div className="flex items-center justify-center gap-3 py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>{examinerSpeaking ? 'Examiner is speaking...' : 'Processing your response...'}</span>
+            </div>
+          )}
+        </main>
       </div>
 
-      {/* Recording Controls */}
-      <div className="p-6 border-t border-border bg-card">
-        <div className="flex items-center justify-center gap-6">
+      <div className="border-t border-border bg-card p-5">
+        {isRecording && (
+          <div className="mx-auto mb-4 max-w-xl">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-medium">Speaking time</span>
+              <span className={hardStopSeconds !== null && recordingSeconds >= hardStopSeconds ? 'text-warning' : 'text-muted-foreground'}>
+                {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                {' / '}
+                {Math.floor(currentStep.targetSeconds / 60)}:{(currentStep.targetSeconds % 60).toString().padStart(2, '0')}
+                {hardStopSeconds !== null && ' hard stop'}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded bg-muted">
+              <div
+                className={`h-full transition-all ${hardStopSeconds !== null && recordingSeconds >= hardStopSeconds ? 'bg-warning' : 'bg-primary'}`}
+                style={{ width: `${Math.min((recordingSeconds / currentStep.targetSeconds) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-center gap-5">
           {!isRecording && !isProcessing && !examinerSpeaking && (
             <button
               onClick={startRecording}
-              className="flex items-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              className="flex items-center gap-3 rounded-lg bg-primary px-7 py-4 font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
             >
-              <Mic className="w-6 h-6" />
-              <span className="text-lg font-semibold">Start Speaking</span>
+              <Mic className="h-6 w-6" />
+              {currentStep.userActionLabel}
             </button>
           )}
 
           {isRecording && (
             <button
               onClick={stopRecording}
-              className="flex items-center gap-3 px-8 py-4 bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
+              className="flex items-center gap-3 rounded-lg bg-destructive px-7 py-4 font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90"
             >
-              <Square className="w-6 h-6 fill-current" />
-              <span className="text-lg font-semibold">Stop Recording</span>
+              <Square className="h-6 w-6 fill-current" />
+              Stop Recording
             </button>
           )}
 
           {isRecording && (
             <div className="flex items-center gap-2 text-destructive">
-              <div className="w-3 h-3 rounded-full bg-destructive recording-pulse"></div>
-              <span className="font-semibold">Recording...</span>
+              <div className="recording-pulse h-3 w-3 rounded-full bg-destructive" />
+              <span className="font-semibold">Recording</span>
+            </div>
+          )}
+
+          {isComplete && (
+            <div className="flex items-center gap-2 text-success">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-semibold">Session complete</span>
+            </div>
+          )}
+
+          {currentStep.needsCoCandidate && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Users className="h-4 w-4" />
+              Partner response follows your turn
             </div>
           )}
         </div>
-
-        <div className="mt-4 text-center text-sm text-muted-foreground">
-          {isRecording
-            ? 'Speak naturally. Click "Stop Recording" when you finish.'
-            : 'Click "Start Speaking" to answer the question.'}
-        </div>
       </div>
+      {selectedImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-8">
+          <div className="max-h-full max-w-5xl overflow-hidden rounded-lg bg-card shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold">Picture {selectedImage.id}</p>
+                <p className="text-xs text-muted-foreground">{selectedImage.altText}</p>
+              </div>
+              <button
+                onClick={() => setSelectedImage(null)}
+                className="rounded-md p-2 transition-colors hover:bg-accent"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <img
+              src={selectedImage.url}
+              alt={selectedImage.altText}
+              className="max-h-[75vh] w-full object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

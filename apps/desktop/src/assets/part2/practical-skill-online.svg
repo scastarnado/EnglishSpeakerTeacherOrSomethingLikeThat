@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">A person learning a practical skill in an online lesson</title>
+  <desc id="desc">A home desk scene with a laptop video lesson showing an instructor demonstrating a practical task.</desc>
+  <defs>
+    <linearGradient id="room" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f0e7db"/>
+      <stop offset="1" stop-color="#d7c5b2"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" x2="1">
+      <stop offset="0" stop-color="#27384a"/>
+      <stop offset="1" stop-color="#172330"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#room)"/>
+  <rect y="560" width="1200" height="240" fill="#9e7457"/>
+  <rect x="215" y="205" width="620" height="380" rx="28" fill="#26313d"/>
+  <rect x="250" y="240" width="550" height="305" rx="12" fill="url(#screen)"/>
+  <rect x="165" y="585" width="720" height="48" rx="20" fill="#1f2933"/>
+  <rect x="370" y="632" width="305" height="34" rx="8" fill="#3a4652"/>
+  <rect x="292" y="275" width="220" height="170" rx="12" fill="#e8eff4"/>
+  <circle cx="402" cy="335" r="38" fill="#9b6547"/>
+  <path d="M356 410c16-52 75-58 96-5l22 40H330z" fill="#517a9b"/>
+  <path d="M540 310h210M540 360h170M540 410h198" stroke="#a9c4d8" stroke-width="18" stroke-linecap="round"/>
+  <rect x="292" y="470" width="458" height="42" rx="10" fill="#536a7e"/>
+  <path d="M335 492h370" stroke="#c6d7e3" stroke-width="10" stroke-linecap="round"/>
+  <rect x="905" y="255" width="150" height="230" rx="20" fill="#f7fafc" stroke="#6b7280" stroke-width="8"/>
+  <path d="M935 302h90M935 340h90M935 378h65" stroke="#60758a" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="452" cy="705" r="56" fill="#8b5e46"/>
+  <path d="M383 800c24-82 116-92 154-10l8 18H375z" fill="#8f3e58"/>
+  <path d="M520 724l155-65M380 724l-145-42" stroke="#8b5e46" stroke-width="28" stroke-linecap="round"/>
+  <rect x="685" y="635" width="145" height="80" rx="10" fill="#e5d2a5" stroke="#735a36" stroke-width="7"/>
+  <path d="M710 672h92M720 698h65" stroke="#9a783e" stroke-width="10" stroke-linecap="round"/>
+  <rect x="235" y="642" width="120" height="55" rx="12" fill="#cbd5e1"/>
+  <path d="M260 670h70" stroke="#6b7280" stroke-width="10" stroke-linecap="round"/>
+</svg>

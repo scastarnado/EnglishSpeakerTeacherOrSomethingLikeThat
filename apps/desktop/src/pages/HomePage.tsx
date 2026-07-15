@@ -1,18 +1,86 @@
 import type { SessionConfig } from '@shared/index';
-import { AlertCircle, CheckCircle, Clock, Mic, Play } from 'lucide-react';
-import { useState } from 'react';
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  FileText,
+  GraduationCap,
+  Images,
+  MessageSquare,
+  Mic,
+  Play,
+  Users,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+type PracticePart = {
+  part: 1 | 2 | 3 | 4;
+  title: string;
+  duration: string;
+  format: string;
+  Icon: LucideIcon;
+  practiceDescription: string;
+  examDescription: string;
+};
+
+const PRACTICE_PARTS: PracticePart[] = [
+  {
+    part: 1,
+    title: 'Part 1 Interview',
+    duration: '2 minutes',
+    format: 'Personal questions',
+    Icon: Mic,
+    practiceDescription: 'Focused rehearsal with realistic personal questions and detailed feedback afterward.',
+    examDescription: 'Strict Part 1 interview simulation with personal questions and neutral examiner behavior.',
+  },
+  {
+    part: 2,
+    title: 'Part 2 Long Turn',
+    duration: '1 minute + follow-up',
+    format: 'Three pictures',
+    Icon: Images,
+    practiceDescription: 'Practise comparing two pictures, speculating, and sustaining a one-minute answer.',
+    examDescription: 'Exam-style long turn with three visual prompts and a short follow-up question.',
+  },
+  {
+    part: 3,
+    title: 'Part 3 Collaborative Task',
+    duration: '3 minutes',
+    format: 'Partner discussion',
+    Icon: Users,
+    practiceDescription: 'Work with an AI partner to compare options, invite opinions, and reach a decision.',
+    examDescription: 'Strict collaborative task with discussion and decision phases.',
+  },
+  {
+    part: 4,
+    title: 'Part 4 Discussion',
+    duration: '5 minutes',
+    format: 'Abstract questions',
+    Icon: MessageSquare,
+    practiceDescription: 'Develop longer opinions with reasons, examples, and more abstract C1 language.',
+    examDescription: 'Exam-style discussion questions connected to the Part 3 topic.',
+  },
+];
 
 export default function HomePage() {
   const navigate = useNavigate();
   const [isCreating, setIsCreating] = useState(false);
   const [systemHealthy, setSystemHealthy] = useState<boolean | null>(null);
-  const [isTrainingMode, setIsTrainingMode] = useState(true); // true = Training, false = Exam
-
-  // Check system health on mount
-  useState(() => {
-    checkSystemHealth();
+  const [isTrainingMode, setIsTrainingMode] = useState(() => {
+    return localStorage.getItem('c1sc.sessionMode') !== 'exam';
   });
+  const [recentSessions, setRecentSessions] = useState<Array<{ id: string; mode: string; startedAt: string; status: string; config: SessionConfig }>>([]);
+
+  useEffect(() => {
+    checkSystemHealth();
+    loadRecentSessions();
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('c1sc.sessionMode', isTrainingMode ? 'practice' : 'exam');
+  }, [isTrainingMode]);
 
   async function checkSystemHealth() {
     try {
@@ -23,14 +91,23 @@ export default function HomePage() {
     }
   }
 
-  async function startPart1Practice() {
+  async function loadRecentSessions() {
+    try {
+      const sessions = await window.electronAPI.session.list({ profileId: 'default', limit: 5 });
+      setRecentSessions(sessions);
+    } catch (error) {
+      console.error('Failed to load recent sessions:', error);
+    }
+  }
+
+  async function startPartPractice(part: 1 | 2 | 3 | 4) {
     setIsCreating(true);
     try {
       const config: SessionConfig = {
         mode: isTrainingMode ? 'intensive_correction' : 'part_practice',
         targetLevel: 'C1',
         feedbackMode: isTrainingMode ? 'immediate' : 'end_only',
-        parts: [1],
+        parts: [part],
         llmModel: 'qwen2.5:7b-instruct',
         whisperModel: 'small.en',
         ttsVoice: 'british_male',
@@ -108,14 +185,14 @@ export default function HomePage() {
       </div>
 
       {/* Mode Toggle */}
-      <div className="mb-8 p-6 rounded-lg border-2 border-primary/20 bg-card">
+      <div className="mb-8 rounded-lg border-2 border-primary/20 bg-card p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex-1">
             <h3 className="text-lg font-semibold mb-1">Session Mode</h3>
             <p className="text-sm text-muted-foreground">
               {isTrainingMode
-                ? 'Training Mode: Get immediate feedback and advice during practice'
-                : 'Exam Mode: Official Cambridge C1 examination simulation (feedback at end only)'}
+                ? 'Practice Mode: rehearse the C1 Advanced format with exam-style prompts and learning-focused feedback afterward.'
+                : 'Exam Mode: strict C1 Advanced speaking simulation with no corrections until the results page.'}
             </p>
           </div>
           <button
@@ -131,54 +208,106 @@ export default function HomePage() {
         </div>
         <div className="flex items-start gap-4 text-sm">
           <div className={`flex-1 p-3 rounded-md ${isTrainingMode ? 'bg-success/10 border border-success/30' : 'bg-muted'}`}>
-            <p className="font-semibold mb-1">🎓 Training Mode</p>
+            <p className="mb-1 flex items-center gap-2 font-semibold">
+              <GraduationCap className="h-4 w-4" />
+              Practice Mode
+            </p>
             <p className="text-muted-foreground text-xs">
-              AI gives feedback, corrections, and suggestions after each response
+              Uses the same exam parts with realistic interlocutor prompts and more learning-focused results.
             </p>
           </div>
           <div className={`flex-1 p-3 rounded-md ${!isTrainingMode ? 'bg-primary/10 border border-primary/30' : 'bg-muted'}`}>
-            <p className="font-semibold mb-1">📝 Exam Mode</p>
+            <p className="mb-1 flex items-center gap-2 font-semibold">
+              <FileText className="h-4 w-4" />
+              Exam Mode
+            </p>
             <p className="text-muted-foreground text-xs">
-              Authentic exam experience with official examiner behavior
+              Follows examiner timing, neutral prompts, partner interaction, and end-only assessment.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Quick Start Options */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Part 1 Practice */}
-        <div className="p-6 rounded-lg border border-border bg-card hover:border-primary transition-colors">
-          <div className="flex items-start gap-4">
-            <div className="p-3 rounded-lg bg-primary/10">
-              <Mic className="w-6 h-6 text-primary" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-xl font-semibold mb-2">Part 1 Practice</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                {isTrainingMode
-                  ? 'Personal interview with immediate feedback and coaching after each response.'
-                  : 'Official Part 1 interview simulation. Personal questions about your life and interests.'}
-              </p>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />3 minutes
-                </span>
-                <span>• Interview</span>
-                {isTrainingMode && <span className="text-success font-medium">• With Feedback</span>}
+      {/* Individual Part Practice */}
+      <div className="mb-8">
+        <div className="mb-4">
+          <h2 className="text-2xl font-semibold">Practice One Part</h2>
+          <p className="text-sm text-muted-foreground">
+            Drill a specific speaking paper task without sitting the whole exam.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {PRACTICE_PARTS.map((item) => {
+            const Icon = item.Icon;
+            return (
+              <div key={item.part} className="p-6 rounded-lg border border-border bg-card hover:border-primary transition-colors">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 rounded-lg bg-primary/10">
+                    <Icon className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {isTrainingMode ? item.practiceDescription : item.examDescription}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        {item.duration}
+                      </span>
+                      <span>• {item.format}</span>
+                      {isTrainingMode && <span className="text-success font-medium">• Feedback afterward</span>}
+                    </div>
+                    <button
+                      onClick={() => startPartPractice(item.part)}
+                      disabled={!systemHealthy || isCreating}
+                      className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isCreating ? 'Starting...' : `Start Part ${item.part}`}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button
-                onClick={startPart1Practice}
-                disabled={!systemHealthy || isCreating}
-                className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isCreating ? 'Starting...' : 'Start Part 1'}
-              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Continue */}
+      {recentSessions.length > 0 && (
+        <div className="mb-8 rounded-lg border border-border bg-card p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Continue Recent Work</h2>
+              <p className="text-sm text-muted-foreground">
+                Pick up your latest practice or review its feedback.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {recentSessions.slice(0, 3).map((session) => {
+                const partLabel = session.config.parts?.length
+                  ? `Part ${session.config.parts.join(', ')}`
+                  : 'Full exam';
+                return (
+                  <button
+                    key={session.id}
+                    onClick={() => navigate(session.status === 'completed' ? `/results/${session.id}` : `/session/${session.id}`)}
+                    className="rounded-md border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                  >
+                    <span className="block font-medium">{partLabel}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(session.startedAt).toLocaleDateString()} - {session.status}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
+      )}
 
-        {/* Full Mock Exam */}
+      {/* Full Mock Exam */}
+      <div className="grid grid-cols-1 mb-8">
         <div className="p-6 rounded-lg border border-border bg-card hover:border-primary transition-colors">
           <div className="flex items-start gap-4">
             <div className="p-3 rounded-lg bg-primary/10">
@@ -188,8 +317,8 @@ export default function HomePage() {
               <h3 className="text-xl font-semibold mb-2">{isTrainingMode ? 'Full Practice Session' : 'Full Mock Examination'}</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {isTrainingMode
-                  ? 'Complete speaking practice with all four parts. Get feedback and tips throughout.'
-                  : 'Authentic C1 examination simulation with all four parts. Official examiner behavior.'}
+                  ? 'All four C1 Advanced speaking parts with exam-style transitions, long turn practice, partner discussion, and abstract questions.'
+                  : 'Full C1 Advanced speaking mock: Part 1 interview, Part 2 long turn, Part 3 collaborative task, and Part 4 discussion.'}
               </p>
               <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
                 <span className="flex items-center gap-1">

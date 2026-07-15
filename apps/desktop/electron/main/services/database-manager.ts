@@ -421,7 +421,7 @@ export class DatabaseManager {
 		const values = row.values[0];
 
 		const rowObj: any = {};
-		columns.forEach((col, idx) => {
+		columns.forEach((col: string, idx: number) => {
 			rowObj[col] = values[idx];
 		});
 
@@ -455,9 +455,9 @@ export class DatabaseManager {
 		const row = result[0];
 		const columns = row.columns;
 
-		return row.values.map((values) => {
+		return row.values.map((values: unknown[]) => {
 			const rowObj: any = {};
-			columns.forEach((col, idx) => {
+			columns.forEach((col: string, idx: number) => {
 				rowObj[col] = values[idx];
 			});
 
@@ -516,9 +516,9 @@ export class DatabaseManager {
 		const row = result[0];
 		const columns = row.columns;
 
-		return row.values.map((values) => {
+		return row.values.map((values: unknown[]) => {
 			const rowObj: any = {};
-			columns.forEach((col, idx) => {
+			columns.forEach((col: string, idx: number) => {
 				rowObj[col] = values[idx];
 			});
 
@@ -583,7 +583,7 @@ export class DatabaseManager {
 		const values = row.values[0];
 
 		const rowObj: any = {};
-		columns.forEach((col, idx) => {
+		columns.forEach((col: string, idx: number) => {
 			rowObj[col] = values[idx];
 		});
 
@@ -607,7 +607,7 @@ export class DatabaseManager {
 		};
 	}
 
-	getDb(): Database.Database {
+	getDb(): Database {
 		if (!this.db) throw new Error('Database not initialized');
 		return this.db;
 	}
