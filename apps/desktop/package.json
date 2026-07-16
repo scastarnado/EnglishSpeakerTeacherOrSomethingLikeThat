@@ -2,6 +2,7 @@
   "name": "@c1sc/desktop",
   "version": "1.0.0",
   "description": "C1 Speaking Coach desktop application",
+  "author": "C1 Speaking Coach",
   "main": "dist-electron/index.js",
   "scripts": {
     "dev": "vite",
@@ -60,6 +61,7 @@
   "build": {
     "appId": "com.c1speakingcoach.app",
     "productName": "C1 Speaking Coach",
+    "electronVersion": "28.3.3",
     "directories": {
       "output": "release/${version}"
     },
@@ -67,7 +69,17 @@
       "dist-electron",
       "dist"
     ],
+    "extraResources": [
+      {
+        "from": "../../apps/ai-service/dist/ai-service",
+        "to": "ai-service",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",

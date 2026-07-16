@@ -43,13 +43,13 @@ export class AIServiceManager {
 			console.log(`[AIService] Starting service on port ${this.port}`);
 
 			// Spawn Python process
-			const pythonExecutable = await this.getPythonExecutable();
-			console.log(`[AIService] Using Python from: ${pythonExecutable}`);
+			const serviceExecutable = await this.getServiceExecutable();
+			console.log(`[AIService] Using service command: ${serviceExecutable}`);
 			console.log(`[AIService] Service path (cwd): ${this.servicePath}`);
 
-			// Verify Python executable exists
-			if (!fs.existsSync(pythonExecutable)) {
-				throw new Error(`Python executable not found at: ${pythonExecutable}`);
+			// Verify service executable exists
+			if (!fs.existsSync(serviceExecutable)) {
+				throw new Error(`AI service executable not found at: ${serviceExecutable}`);
 			}
 
 			// Verify service path exists
@@ -57,16 +57,10 @@ export class AIServiceManager {
 				throw new Error(`AI service path not found at: ${this.servicePath}`);
 			}
 
-			// On Windows, wrap the path in quotes and use cmd /c for better compatibility
-			const isWindows = process.platform === 'win32';
-			const command = isWindows ? 'cmd.exe' : pythonExecutable;
+			const command = serviceExecutable;
 			const args =
-				isWindows ?
+				process.env.NODE_ENV === 'development' || !app.isPackaged ?
 					[
-						'/c',
-						`"${pythonExecutable}" -m uvicorn app.main:app --host 127.0.0.1 --port ${this.port}`,
-					]
-				:	[
 						'-m',
 						'uvicorn',
 						'app.main:app',
@@ -74,7 +68,8 @@ export class AIServiceManager {
 						'127.0.0.1',
 						'--port',
 						this.port.toString(),
-					];
+					]
+				:	['--host', '127.0.0.1', '--port', this.port.toString()];
 
 			this.process = spawn(command, args, {
 				cwd: this.servicePath,
@@ -82,9 +77,10 @@ export class AIServiceManager {
 					...process.env,
 					AI_SERVICE_AUTH_TOKEN: this.authToken,
 					AI_SERVICE_DATA_PATH: this.userDataPath,
+					AI_SERVICE_CACHE_PATH: path.join(this.userDataPath, 'cache'),
 				},
 				stdio: ['ignore', 'pipe', 'pipe'],
-				windowsVerbatimArguments: true,
+				windowsVerbatimArguments: process.env.NODE_ENV === 'development',
 			});
 
 			// Log output
@@ -243,7 +239,7 @@ export class AIServiceManager {
 		return startPort + Math.floor(Math.random() * 1000);
 	}
 
-	private async getPythonExecutable(): Promise<string> {
+	private async getServiceExecutable(): Promise<string> {
 		// In development, use virtual environment Python from workspace root
 		if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
 			// Get workspace root: apps/desktop/dist-electron -> apps/desktop -> apps -> workspace
@@ -256,11 +252,11 @@ export class AIServiceManager {
 			return pythonPath;
 		}
 
-		// In production, use bundled Python
+		// In production, use the bundled PyInstaller service executable
 		if (process.platform === 'win32') {
-			return path.join(process.resourcesPath, 'python', 'python.exe');
-		} else {
-			return path.join(process.resourcesPath, 'python', 'bin', 'python3');
+			return path.join(this.servicePath, 'ai-service.exe');
 		}
+
+		return path.join(this.servicePath, 'ai-service');
 	}
 }

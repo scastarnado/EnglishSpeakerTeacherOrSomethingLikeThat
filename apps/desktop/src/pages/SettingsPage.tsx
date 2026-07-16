@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Check, X, Loader2, Download, AlertCircle, ExternalLink } from 'lucide-react';
+import { Check, X, Loader2, Download, AlertCircle, ExternalLink, RotateCcw, Palette } from 'lucide-react';
+import { useToast } from '../components/ToastProvider';
+import { usePreferences, type AppDensity, type AppTheme } from '../lib/preferences';
 
 interface OllamaStatus {
   installed: boolean;
@@ -9,11 +11,10 @@ interface OllamaStatus {
 }
 
 export default function SettingsPage() {
+  const { notify } = useToast();
+  const { preferences, updatePreferences, resetPreferences } = usePreferences();
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [isChecking, setIsChecking] = useState(true);
-  const [selectedLLM, setSelectedLLM] = useState('qwen2.5:7b-instruct');
-  const [selectedWhisper, setSelectedWhisper] = useState('small.en');
-  const [selectedVoice, setSelectedVoice] = useState('british_male');
 
   useEffect(() => {
     checkOllamaStatus();
@@ -24,9 +25,19 @@ export default function SettingsPage() {
     try {
       const status = await window.electronAPI.system.checkOllama();
       setOllamaStatus(status);
+      notify({
+        type: status.running ? 'success' : 'error',
+        title: status.running ? 'System check complete' : 'Ollama not running',
+        message: status.running ? 'The local model service is available.' : 'Start Ollama, then retry.',
+      });
     } catch (error) {
       console.error('Failed to check Ollama status:', error);
       setOllamaStatus({ installed: false, running: false });
+      notify({
+        type: 'error',
+        title: 'System check failed',
+        message: 'Could not contact Ollama.',
+      });
     } finally {
       setIsChecking(false);
     }
@@ -36,6 +47,15 @@ export default function SettingsPage() {
     window.open('https://ollama.ai/download', '_blank');
   }
 
+  function handleResetPreferences() {
+    resetPreferences();
+    notify({
+      type: 'success',
+      title: 'Preferences reset',
+      message: 'Personalization and model defaults were restored.',
+    });
+  }
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8">
@@ -43,6 +63,69 @@ export default function SettingsPage() {
         <p className="text-muted-foreground">
           Configure your C1 Speaking Coach application
         </p>
+      </div>
+
+      {/* Personalization */}
+      <div className="mb-8">
+        <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold">
+          <Palette className="h-6 w-6 text-primary" />
+          Personalization
+        </h2>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <label className="mb-2 block font-semibold">Theme</label>
+            <select
+              value={preferences.theme}
+              onChange={(event) => updatePreferences({ theme: event.target.value as AppTheme })}
+              className="w-full rounded-md border border-border bg-background px-3 py-2"
+            >
+              <option value="system">Use System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="sage">Sage</option>
+              <option value="sunset">Sunset</option>
+            </select>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-4">
+            <label className="mb-2 block font-semibold">Interface Density</label>
+            <select
+              value={preferences.density}
+              onChange={(event) => updatePreferences({ density: event.target.value as AppDensity })}
+              className="w-full rounded-md border border-border bg-background px-3 py-2"
+            >
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+            </select>
+          </div>
+
+          <label className="flex items-center justify-between rounded-lg border border-border bg-card p-4">
+            <span>
+              <span className="block font-semibold">Reduce Motion</span>
+              <span className="text-sm text-muted-foreground">Minimize animations and transitions.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={preferences.reduceMotion}
+              onChange={(event) => updatePreferences({ reduceMotion: event.target.checked })}
+              className="h-5 w-5 accent-primary"
+            />
+          </label>
+
+          <label className="flex items-center justify-between rounded-lg border border-border bg-card p-4">
+            <span>
+              <span className="block font-semibold">Practice Tips</span>
+              <span className="text-sm text-muted-foreground">Show coaching reminders during practice mode.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={preferences.showPracticeTips}
+              onChange={(event) => updatePreferences({ showPracticeTips: event.target.checked })}
+              className="h-5 w-5 accent-primary"
+            />
+          </label>
+        </div>
       </div>
 
       {/* System Status */}
@@ -156,8 +239,8 @@ export default function SettingsPage() {
           <div className="p-4 rounded-lg border border-border bg-card">
             <label className="block font-semibold mb-2">Language Model (LLM)</label>
             <select
-              value={selectedLLM}
-              onChange={(e) => setSelectedLLM(e.target.value)}
+              value={preferences.llmModel}
+              onChange={(e) => updatePreferences({ llmModel: e.target.value })}
               className="w-full px-3 py-2 border border-border rounded-md bg-background"
               disabled={!ollamaStatus?.running}
             >
@@ -175,8 +258,8 @@ export default function SettingsPage() {
           <div className="p-4 rounded-lg border border-border bg-card">
             <label className="block font-semibold mb-2">Speech Recognition Model</label>
             <select
-              value={selectedWhisper}
-              onChange={(e) => setSelectedWhisper(e.target.value)}
+              value={preferences.whisperModel}
+              onChange={(e) => updatePreferences({ whisperModel: e.target.value })}
               className="w-full px-3 py-2 border border-border rounded-md bg-background"
             >
               <option value="tiny.en">Tiny (Fastest, less accurate)</option>
@@ -193,8 +276,8 @@ export default function SettingsPage() {
           <div className="p-4 rounded-lg border border-border bg-card">
             <label className="block font-semibold mb-2">Examiner Voice</label>
             <select
-              value={selectedVoice}
-              onChange={(e) => setSelectedVoice(e.target.value)}
+              value={preferences.ttsVoice}
+              onChange={(e) => updatePreferences({ ttsVoice: e.target.value })}
               className="w-full px-3 py-2 border border-border rounded-md bg-background"
             >
               <option value="british_male">British Male</option>
@@ -240,12 +323,21 @@ export default function SettingsPage() {
       </div>
 
       {/* About */}
-      <div className="p-4 rounded-lg bg-muted/50 text-sm">
-        <p className="font-semibold mb-1">C1 Speaking Coach v1.0.0</p>
-        <p className="text-muted-foreground">
-          An independent practice tool for C1 Advanced speaking examination. Not
-          affiliated with Cambridge University Press & Assessment.
-        </p>
+      <div className="flex flex-col gap-4 rounded-lg bg-muted/50 p-4 text-sm md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="font-semibold mb-1">C1 Speaking Coach v1.0.0</p>
+          <p className="text-muted-foreground">
+            An independent practice tool for C1 Advanced speaking examination. Not
+            affiliated with Cambridge University Press & Assessment.
+          </p>
+        </div>
+        <button
+          onClick={handleResetPreferences}
+          className="flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 transition-colors hover:bg-accent"
+        >
+          <RotateCcw className="h-4 w-4" />
+          Reset Preferences
+        </button>
       </div>
     </div>
   );

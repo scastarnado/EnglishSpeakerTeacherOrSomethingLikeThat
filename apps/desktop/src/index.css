@@ -59,6 +59,46 @@
     --error: 0 62.8% 30.6%;
     --error-foreground: 210 40% 98%;
   }
+
+  .theme-sage {
+    --background: 150 20% 97%;
+    --foreground: 166 34% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 166 34% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 166 34% 12%;
+    --primary: 160 43% 34%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 148 24% 91%;
+    --secondary-foreground: 166 34% 16%;
+    --muted: 150 22% 92%;
+    --muted-foreground: 164 11% 42%;
+    --accent: 44 76% 91%;
+    --accent-foreground: 33 45% 18%;
+    --border: 151 18% 82%;
+    --input: 151 18% 82%;
+    --ring: 160 43% 34%;
+  }
+
+  .theme-sunset {
+    --background: 28 45% 97%;
+    --foreground: 234 27% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 234 27% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 234 27% 15%;
+    --primary: 350 72% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 45% 92%;
+    --secondary-foreground: 228 38% 20%;
+    --muted: 31 35% 91%;
+    --muted-foreground: 230 10% 43%;
+    --accent: 198 54% 88%;
+    --accent-foreground: 207 54% 20%;
+    --border: 26 27% 82%;
+    --input: 26 27% 82%;
+    --ring: 350 72% 48%;
+  }
 }
 
 @layer base {
@@ -69,6 +109,27 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  .density-compact body {
+    font-size: 0.9375rem;
+  }
+
+  .reduce-motion *,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

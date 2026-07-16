@@ -14,12 +14,14 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useToast } from '../components/ToastProvider';
 import {
   getDiscussionTaskSetForSession,
   getPart2TaskForSession,
   type DiscussionTaskSet,
   type SpeakingTaskLite,
 } from '../data/speakingTasks';
+import { usePreferences } from '../lib/preferences';
 
 type ExamStep = {
   id: string;
@@ -42,6 +44,12 @@ type ExamStep = {
   userActionLabel: string;
   task?: SpeakingTaskLite;
   needsCoCandidate?: boolean;
+  skipExaminerPrompt?: boolean;
+};
+
+type PartSummaryState = {
+  part: 1 | 2 | 3 | 4;
+  nextStepIndex: number | null;
 };
 
 const PART1_STEPS: ExamStep[] = [
@@ -101,30 +109,58 @@ function buildPart2Steps(part2Task: SpeakingTaskLite): ExamStep[] {
 function buildPart3Steps(discussionSet: DiscussionTaskSet): ExamStep[] {
   return [
     {
-    id: 'p3-instructions',
-    part: 3,
-    state: 'part3_instructions',
-    title: 'Part 3 Collaborative Task',
-    subtitle: 'Discuss options with another candidate and work toward a decision',
-    timerLabel: '2 min discussion',
-    targetSeconds: 120,
-    examinerPurpose: 'Give official Part 3 instructions and present the options for the two-minute discussion phase.',
-    userActionLabel: 'Start the discussion',
-    task: discussionSet.part3,
-    needsCoCandidate: true,
+      id: 'p3-instructions',
+      part: 3,
+      state: 'part3_instructions',
+      title: 'Part 3 Collaborative Task',
+      subtitle: 'Discuss options with another candidate and work toward a decision',
+      timerLabel: '2 min discussion',
+      targetSeconds: 120,
+      examinerPurpose: 'Give official Part 3 instructions and present the options for the two-minute discussion phase.',
+      userActionLabel: 'Start the discussion',
+      task: discussionSet.part3,
+      needsCoCandidate: true,
     },
     {
-    id: 'p3-decision',
-    part: 3,
-    state: 'part3_decision',
-    title: 'Part 3 Decision',
-    subtitle: 'Reach a reasoned decision with your partner',
-    timerLabel: '1 min',
-    targetSeconds: 60,
-    examinerPurpose: 'Ask candidates to decide which two options are most important.',
-    userActionLabel: 'Make a decision',
-    task: discussionSet.part3,
-    needsCoCandidate: true,
+      id: 'p3-discussion-1',
+      part: 3,
+      state: 'part3_collaborative',
+      title: 'Part 3 Collaborative Task',
+      subtitle: 'Continue comparing the options with your partner',
+      timerLabel: 'discussion round',
+      targetSeconds: 45,
+      examinerPurpose: 'Let candidates continue the collaborative discussion without examiner intervention.',
+      userActionLabel: 'Respond to your partner',
+      task: discussionSet.part3,
+      needsCoCandidate: true,
+      skipExaminerPrompt: true,
+    },
+    {
+      id: 'p3-discussion-2',
+      part: 3,
+      state: 'part3_collaborative',
+      title: 'Part 3 Collaborative Task',
+      subtitle: 'Develop the discussion before reaching a decision',
+      timerLabel: 'discussion round',
+      targetSeconds: 45,
+      examinerPurpose: 'Let candidates explore another option or point of agreement before the decision phase.',
+      userActionLabel: 'Keep the discussion going',
+      task: discussionSet.part3,
+      needsCoCandidate: true,
+      skipExaminerPrompt: true,
+    },
+    {
+      id: 'p3-decision',
+      part: 3,
+      state: 'part3_decision',
+      title: 'Part 3 Decision',
+      subtitle: 'Reach a reasoned decision with your partner',
+      timerLabel: '1 min',
+      targetSeconds: 60,
+      examinerPurpose: 'Ask candidates to decide which two options are most important.',
+      userActionLabel: 'Make a decision',
+      task: discussionSet.part3,
+      needsCoCandidate: true,
     },
   ];
 }
@@ -176,6 +212,8 @@ function buildExamPlan(sessionData: Session): ExamStep[] {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const { notify } = useToast();
+  const { preferences } = usePreferences();
 
   const [session, setSession] = useState<Session | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -192,6 +230,8 @@ export default function SessionPage() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ id: string; url: string; altText: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState('Loading session...');
+  const [partSummary, setPartSummary] = useState<PartSummaryState | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -204,14 +244,13 @@ export default function SessionPage() {
   }, [session]);
 
   const currentStep = examPlan[Math.min(currentStepIndex, examPlan.length - 1)];
+  const currentPart = currentStep.part;
   const isTrainingMode =
     session?.mode === 'conversation' || session?.mode === 'intensive_correction';
   const isExamMode = !!session && !isTrainingMode;
   const progressPercent = Math.round(((currentStepIndex + 1) / examPlan.length) * 100);
   const hardStopSeconds =
-    isExamMode && (currentStep.part === 2 || currentStep.state === 'part3_instructions' || currentStep.state === 'part3_decision')
-      ? currentStep.targetSeconds
-      : null;
+    isExamMode && (currentStep.part === 2 || currentStep.state === 'part3_decision') ? currentStep.targetSeconds : null;
 
   useEffect(() => {
     if (sessionId && !isLoadingSession && !session) {
@@ -281,16 +320,23 @@ export default function SessionPage() {
 
     setIsLoadingSession(true);
     try {
+      setStatusMessage('Loading session...');
       const loadedSession = await window.electronAPI.session.get({ sessionId: sessionId! });
       if (loadedSession) {
         setSession(loadedSession);
         setSessionStartTime(Date.now());
+        setStatusMessage('Starting session...');
         await window.electronAPI.session.start({ sessionId: sessionId! });
         const loadedPlan = buildExamPlan(loadedSession);
         await playExaminerStep(loadedPlan[0], loadedSession, 0);
       }
     } catch (error) {
       console.error('Failed to load session:', error);
+      notify({
+        type: 'error',
+        title: 'Session failed to load',
+        message: 'Go back to Home and try starting again.',
+      });
     } finally {
       setIsLoadingSession(false);
     }
@@ -308,6 +354,7 @@ export default function SessionPage() {
     isGettingPromptRef.current = true;
     setExaminerSpeaking(true);
     setIsProcessing(true);
+    setStatusMessage('Examiner is preparing a prompt...');
 
     try {
       const previousTurns: Turn[] = await window.electronAPI.db.getTurns({ sessionId: sessionData.id });
@@ -335,6 +382,7 @@ export default function SessionPage() {
       });
 
       setCurrentPrompt(response.spokenText);
+      setStatusMessage('Generating examiner audio...');
 
       const ttsResult = await window.electronAPI.ai.ttsGenerate({
         text: response.spokenText,
@@ -358,6 +406,7 @@ export default function SessionPage() {
 
       await window.electronAPI.db.saveTurn(examinerTurn);
       setTurns((prev) => [...prev, examinerTurn]);
+      setStatusMessage('Examiner is speaking...');
       await playAudio(ttsResult.audioPath);
 
       if (stepIndex !== currentStepIndex) {
@@ -367,25 +416,31 @@ export default function SessionPage() {
       console.error('Failed to get examiner prompt:', error);
       const fallback = getFallbackPrompt(step);
       setCurrentPrompt(fallback);
-      alert(`Failed to get examiner prompt: ${error?.message || 'Unknown error'}`);
+      notify({
+        type: 'error',
+        title: 'Prompt generation failed',
+        message: error?.message || 'Using a fallback prompt so you can continue.',
+      });
     } finally {
       setExaminerSpeaking(false);
       setIsProcessing(false);
+      setStatusMessage('Ready for your answer.');
       isGettingPromptRef.current = false;
     }
   }
 
-  async function playCoCandidateTurn(userTurn: Turn, step: ExamStep) {
+  async function playCoCandidateTurn(step: ExamStep) {
     if (!session || !step.task) return;
 
     setIsProcessing(true);
+    setStatusMessage('Partner is preparing a response...');
     try {
       const previousTurns: Turn[] = await window.electronAPI.db.getTurns({ sessionId: session.id });
       const response: CoCandidateResponse = await window.electronAPI.ai.coCandidateRespond({
         sessionId: session.id,
         examPart: step.part,
         examState: step.state,
-        conversationHistory: [...previousTurns, userTurn].map((turn) => ({
+        conversationHistory: previousTurns.map((turn) => ({
           speaker: turn.speaker,
           transcript: turn.transcript,
         })) as any,
@@ -412,7 +467,7 @@ export default function SessionPage() {
         id: crypto.randomUUID(),
         sessionId: session.id,
         partNumber: step.part,
-        sequenceNumber: previousTurns.length + 1,
+        sequenceNumber: previousTurns.length,
         speaker: 'co_candidate',
         startedAt: new Date().toISOString(),
         endedAt: new Date().toISOString(),
@@ -424,11 +479,18 @@ export default function SessionPage() {
       await window.electronAPI.db.saveTurn(coCandidateTurn);
       setTurns((prev) => [...prev, coCandidateTurn]);
       setCurrentPrompt(response.spokenText);
+      setStatusMessage('Partner is speaking...');
       await playAudio(ttsResult.audioPath);
     } catch (error) {
       console.error('Failed to get co-candidate response:', error);
+      notify({
+        type: 'error',
+        title: 'Partner response failed',
+        message: 'The examiner will continue with the next prompt.',
+      });
     } finally {
       setIsProcessing(false);
+      setStatusMessage('Ready for your answer.');
     }
   }
 
@@ -457,7 +519,11 @@ export default function SessionPage() {
         audioPlayerRef.current = null;
         reject(error);
       };
-      audio.play().catch(reject);
+      audio.play().catch((error) => {
+        URL.revokeObjectURL(audioUrl);
+        audioPlayerRef.current = null;
+        reject(error);
+      });
     });
   }
 
@@ -480,9 +546,14 @@ export default function SessionPage() {
       setIsRecording(true);
       setRecordingSeconds(0);
       setRecordingStartedAt(Date.now());
+      setStatusMessage('Recording your answer...');
     } catch (error) {
       console.error('Failed to start recording:', error);
-      alert('Microphone access denied');
+      notify({
+        type: 'error',
+        title: 'Microphone unavailable',
+        message: 'Allow microphone access and try again.',
+      });
     }
   }
 
@@ -491,16 +562,22 @@ export default function SessionPage() {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       setRecordingStartedAt(null);
+      setStatusMessage('Saving recording...');
     }
   }
 
   async function processRecording() {
     if (!session) {
-      alert('Session error. Please refresh the page.');
+      notify({
+        type: 'error',
+        title: 'Session error',
+        message: 'Refresh the page and try again.',
+      });
       return;
     }
 
     setIsProcessing(true);
+    setStatusMessage('Transcribing your answer...');
 
     try {
       const stepAtRecording = currentStep;
@@ -520,6 +597,7 @@ export default function SessionPage() {
       });
 
       const savedTurns: Turn[] = await window.electronAPI.db.getTurns({ sessionId: session.id });
+      setStatusMessage('Saving transcript...');
       const userTurn: Turn = {
         id: crypto.randomUUID(),
         sessionId: session.id,
@@ -538,17 +616,27 @@ export default function SessionPage() {
       await window.electronAPI.db.saveTurn(userTurn);
       setTurns((prev) => [...prev, userTurn]);
       setIsProcessing(false);
+      notify({
+        type: 'success',
+        title: 'Answer saved',
+        message: `${userTurn.wordCount} words transcribed.`,
+      });
 
       if (stepAtRecording.needsCoCandidate) {
-        await playCoCandidateTurn(userTurn, stepAtRecording);
+        await playCoCandidateTurn(stepAtRecording);
       }
 
       await advanceAfterUserTurn();
     } catch (error: any) {
       console.error('Failed to process recording:', error);
-      alert(`Failed to process your response: ${error?.message || 'Unknown error'}. Please try again.`);
+      notify({
+        type: 'error',
+        title: 'Could not process answer',
+        message: error?.message || 'Please try recording again.',
+      });
     } finally {
       setIsProcessing(false);
+      setStatusMessage('Ready for your answer.');
     }
   }
 
@@ -557,19 +645,49 @@ export default function SessionPage() {
 
     const nextIndex = currentStepIndex + 1;
     if (nextIndex >= examPlan.length) {
-      await finishSession();
+      setPartSummary({ part: currentPart, nextStepIndex: null });
       return;
     }
 
     const nextStep = examPlan[nextIndex];
+    if (nextStep.part !== currentPart) {
+      setPartSummary({ part: currentPart, nextStepIndex: nextIndex });
+      setStatusMessage(`Part ${currentPart} complete. Review the task resources before continuing.`);
+      return;
+    }
+
     setCurrentStepIndex(nextIndex);
+    if (nextStep.skipExaminerPrompt) {
+      setStatusMessage('Continue the discussion with your partner.');
+      return;
+    }
     await playExaminerStep(nextStep, session, nextIndex);
+  }
+
+  async function continueAfterPartSummary() {
+    if (!session || !partSummary) return;
+
+    const nextStepIndex = partSummary.nextStepIndex;
+    setPartSummary(null);
+    if (nextStepIndex === null) {
+      await finishSession();
+      return;
+    }
+
+    const nextStep = examPlan[nextStepIndex];
+    setCurrentStepIndex(nextStepIndex);
+    if (nextStep.skipExaminerPrompt) {
+      setStatusMessage('Continue the discussion with your partner.');
+      return;
+    }
+    await playExaminerStep(nextStep, session, nextStepIndex);
   }
 
   async function finishSession() {
     if (!session || isComplete) return;
 
     setIsComplete(true);
+    setStatusMessage('Completing session...');
     await window.electronAPI.session.complete({ sessionId: session.id });
     navigate(`/results/${session.id}`);
   }
@@ -581,15 +699,136 @@ export default function SessionPage() {
     navigate(`/results/${session.id}`);
   }
 
+  function getPartSteps(part: 1 | 2 | 3 | 4) {
+    return examPlan.filter((step) => step.part === part);
+  }
+
+  function getPrimaryTaskForPart(part: 1 | 2 | 3 | 4) {
+    return getPartSteps(part).find((step) => step.task)?.task;
+  }
+
+  function getPartExaminerPrompts(part: 1 | 2 | 3 | 4) {
+    return turns.filter((turn) => turn.partNumber === part && turn.speaker === 'examiner');
+  }
+
+  function renderPartSummary(part: 1 | 2 | 3 | 4) {
+    const stepsForPart = getPartSteps(part);
+    const task = getPrimaryTaskForPart(part);
+    const examinerPrompts = getPartExaminerPrompts(part);
+    const part4Questions = stepsForPart
+      .flatMap((step) => step.task?.questions ?? [])
+      .filter((question, index, questions) => questions.indexOf(question) === index);
+
+    return (
+      <div className="space-y-5">
+        <div>
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Completed part</p>
+          <h2 className="mt-1 text-xl font-bold">Part {part} Resource Review</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            These are the questions, topics and visual resources used in this part.
+          </p>
+        </div>
+
+        {task && (
+          <section className="rounded-lg border border-border bg-background p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">
+              {part === 3 ? 'Main topic' : 'Task'}
+            </p>
+            <h3 className="mt-1 font-semibold">{task.title}</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{task.instructions}</p>
+            {task.topicTags.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {task.topicTags.map((tag) => (
+                  <span key={tag} className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {part === 2 && task?.imageAssets && (
+          <section>
+            <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">Images shown</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {task.imageAssets.map((image) => (
+                <figure key={image.id} className="overflow-hidden rounded-lg border border-border bg-background">
+                  <div className="relative aspect-[4/3]">
+                    <img src={image.url} alt={image.altText} className="h-full w-full object-cover" />
+                    <figcaption className="absolute left-2 top-2 rounded bg-background/90 px-2 py-1 text-xs font-bold">
+                      {image.id}
+                    </figcaption>
+                  </div>
+                  <p className="p-3 text-xs text-muted-foreground">{image.altText}</p>
+                </figure>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {part === 3 && task?.discussionOptions && (
+          <section>
+            <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">Discussion options</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {task.discussionOptions.map((option) => (
+                <div key={option.id} className="rounded-lg border border-border bg-background p-4">
+                  <p className="text-sm font-semibold">{option.text}</p>
+                  {option.description && <p className="mt-2 text-xs text-muted-foreground">{option.description}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {((task?.questions.length ?? 0) > 0 || part4Questions.length > 0) && (
+          <section>
+            <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">
+              {part === 4 ? 'Discussion questions' : 'Question focus'}
+            </p>
+            <div className="space-y-2">
+              {(part === 4 ? part4Questions : task?.questions ?? []).map((question) => (
+                <div key={question} className="rounded-md border border-border bg-background px-3 py-2 text-sm">
+                  {question}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {examinerPrompts.length > 0 && (
+          <section>
+            <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">Examiner prompts used</p>
+            <div className="max-h-48 space-y-2 overflow-auto pr-2">
+              {examinerPrompts.map((turn, index) => (
+                <div key={turn.id} className="rounded-md bg-muted/60 px-3 py-2 text-sm">
+                  <span className="font-semibold">Prompt {index + 1}: </span>
+                  {turn.transcript}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  }
+
   async function replayLastPrompt() {
     if (!lastAudioPath || isRecording || isProcessing) return;
     try {
       setExaminerSpeaking(true);
+      setStatusMessage('Replaying latest prompt...');
       await playAudio(lastAudioPath);
     } catch (error) {
       console.error('Failed to replay prompt:', error);
+      notify({
+        type: 'error',
+        title: 'Replay failed',
+        message: 'The saved audio could not be played.',
+      });
     } finally {
       setExaminerSpeaking(false);
+      setStatusMessage('Ready for your answer.');
     }
   }
 
@@ -658,6 +897,16 @@ export default function SessionPage() {
         <div className="mt-5 h-2 overflow-hidden rounded bg-muted">
           <div className="h-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
         </div>
+        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+          {isProcessing || examinerSpeaking ? (
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          ) : isRecording ? (
+            <Mic className="h-4 w-4 text-destructive" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4 text-success" />
+          )}
+          <span>{statusMessage}</span>
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_1fr]">
@@ -714,6 +963,8 @@ export default function SessionPage() {
                           <img
                             src={image.url}
                             alt={image.altText}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-cover"
                           />
                           <figcaption className="absolute left-2 top-2 rounded bg-background/90 px-2 py-1 text-xs font-bold">
@@ -736,6 +987,7 @@ export default function SessionPage() {
             </div>
           )}
 
+          {preferences.showPracticeTips && (
           <div className="mt-5 rounded-lg border border-border bg-card p-4">
             <div className="mb-3 flex items-center gap-2 font-semibold">
               <Clock className="h-4 w-4 text-primary" />
@@ -754,6 +1006,7 @@ export default function SessionPage() {
               )}
             </div>
           </div>
+          )}
         </aside>
 
         <main className="min-h-0 overflow-auto p-6">
@@ -811,7 +1064,7 @@ export default function SessionPage() {
           {isProcessing && (
             <div className="flex items-center justify-center gap-3 py-8 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
-              <span>{examinerSpeaking ? 'Examiner is speaking...' : 'Processing your response...'}</span>
+              <span>{statusMessage}</span>
             </div>
           )}
         </main>
@@ -838,7 +1091,7 @@ export default function SessionPage() {
           </div>
         )}
         <div className="flex items-center justify-center gap-5">
-          {!isRecording && !isProcessing && !examinerSpeaking && (
+          {!partSummary && !isRecording && !isProcessing && !examinerSpeaking && (
             <button
               onClick={startRecording}
               className="flex items-center gap-3 rounded-lg bg-primary px-7 py-4 font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
@@ -880,6 +1133,27 @@ export default function SessionPage() {
           )}
         </div>
       </div>
+      {partSummary && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6">
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-card shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold">Part {partSummary.part} complete</p>
+                <p className="text-xs text-muted-foreground">Review the resources before moving on.</p>
+              </div>
+              <button
+                onClick={continueAfterPartSummary}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                {partSummary.nextStepIndex === null
+                  ? 'View results'
+                  : `Continue to Part ${examPlan[partSummary.nextStepIndex]?.part ?? ''}`}
+              </button>
+            </div>
+            <div className="overflow-auto p-5">{renderPartSummary(partSummary.part)}</div>
+          </div>
+        </div>
+      )}
       {selectedImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-8">
           <div className="max-h-full max-w-5xl overflow-hidden rounded-lg bg-card shadow-xl">
@@ -898,6 +1172,7 @@ export default function SessionPage() {
             <img
               src={selectedImage.url}
               alt={selectedImage.altText}
+              decoding="async"
               className="max-h-[75vh] w-full object-contain"
             />
           </div>

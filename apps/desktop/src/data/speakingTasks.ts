@@ -1,3 +1,7 @@
+import learningSkillsNavigation from '../assets/part2-ai/learning-skills-navigation.png';
+import learningSkillsOnline from '../assets/part2-ai/learning-skills-online.png';
+import learningSkillsWorkshop from '../assets/part2-ai/learning-skills-workshop.png';
+
 export type SpeakingTaskLite = {
   id: string;
   version: number;
@@ -36,6 +40,7 @@ type SceneSpec = {
 
 const CREATED_AT = '2026-07-14T00:00:00.000Z';
 const LICENCE = 'Generated local practice asset';
+const AI_PHOTO_LICENCE = 'AI-generated local photo-style practice asset';
 
 function svgUrl(scene: SceneSpec): string {
   const people = Array.from({ length: scene.people }, (_, index) => {
@@ -179,19 +184,45 @@ function part2Task(
 }
 
 export const PART2_TASKS: SpeakingTaskLite[] = [
-  part2Task(
-    '11111111-1111-4111-8111-111111111111',
-    'People learning practical skills',
-    ['learning', 'skills', 'education'],
-    'people learning practical skills',
-    ['why the people might be learning these skills', 'how useful these skills might be in the future'],
-    'Which skill do you think would be more difficult to master?',
-    [
-      { title: 'Workshop training', alt: 'Adults learning woodworking in a workshop with tools and an instructor.', sky: '#dbeafe', ground: '#9a6b45', accent: '#2563eb', secondary: '#dc2626', setting: 'workshop', people: 3, props: ['tools', 'books', 'laptop'] },
-      { title: 'Outdoor navigation class', alt: 'A small group learning navigation outdoors with a map and equipment.', sky: '#bae6fd', ground: '#4d7c0f', accent: '#16a34a', secondary: '#f59e0b', setting: 'nature', people: 3, props: ['map', 'camera', 'plants'] },
-      { title: 'Online practical lesson', alt: 'A person learning a practical skill from an online lesson at home.', sky: '#fef3c7', ground: '#a16207', accent: '#be123c', secondary: '#2563eb', setting: 'home', people: 1, props: ['laptop', 'phone', 'books'] },
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    version: 2,
+    part: 2,
+    title: 'People learning practical skills',
+    topicTags: ['learning', 'skills', 'education'],
+    difficulty: 'C1',
+    instructions:
+      'Look at three photographs showing people learning practical skills. Talk about two of them. Say why the people might be learning these skills and how useful these skills might be in the future.',
+    questions: [
+      'why the people might be learning these skills',
+      'how useful these skills might be in the future',
     ],
-  ),
+    followUpQuestions: ['Which skill do you think would be more difficult to master?'],
+    imageAssets: [
+      {
+        id: 'A',
+        url: learningSkillsWorkshop,
+        altText: 'Adults learning woodworking in a workshop with tools and an instructor.',
+        licence: AI_PHOTO_LICENCE,
+      },
+      {
+        id: 'B',
+        url: learningSkillsNavigation,
+        altText: 'A small group learning outdoor navigation with a map and compass.',
+        licence: AI_PHOTO_LICENCE,
+      },
+      {
+        id: 'C',
+        url: learningSkillsOnline,
+        altText: 'A person learning a practical sewing skill through an online lesson.',
+        licence: AI_PHOTO_LICENCE,
+      },
+    ],
+    targetFunctions: ['comparing', 'speculating', 'evaluating', 'prioritising'],
+    createdBy: 'curated',
+    createdAt: CREATED_AT,
+    isActive: true,
+  },
   part2Task(
     '11111111-1111-4111-8111-111111111112',
     'People solving environmental problems',

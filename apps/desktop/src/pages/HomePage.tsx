@@ -14,6 +14,8 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../components/ToastProvider';
+import { usePreferences } from '../lib/preferences';
 
 type PracticePart = {
   part: 1 | 2 | 3 | 4;
@@ -66,7 +68,9 @@ const PRACTICE_PARTS: PracticePart[] = [
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const [isCreating, setIsCreating] = useState(false);
+  const { notify, dismiss } = useToast();
+  const { preferences } = usePreferences();
+  const [creatingLabel, setCreatingLabel] = useState<string | null>(null);
   const [systemHealthy, setSystemHealthy] = useState<boolean | null>(null);
   const [isTrainingMode, setIsTrainingMode] = useState(() => {
     return localStorage.getItem('c1sc.sessionMode') !== 'exam';
@@ -86,8 +90,20 @@ export default function HomePage() {
     try {
       const health = await window.electronAPI.system.checkHealth();
       setSystemHealthy(health.healthy);
+      if (!health.healthy) {
+        notify({
+          type: 'error',
+          title: 'System not ready',
+          message: 'Check Settings for model and service status.',
+        });
+      }
     } catch {
       setSystemHealthy(false);
+      notify({
+        type: 'error',
+        title: 'Health check failed',
+        message: 'The local AI service did not respond.',
+      });
     }
   }
 
@@ -101,16 +117,22 @@ export default function HomePage() {
   }
 
   async function startPartPractice(part: 1 | 2 | 3 | 4) {
-    setIsCreating(true);
+    const label = `Part ${part}`;
+    setCreatingLabel(label);
+    const toastId = notify({
+      type: 'loading',
+      title: `Preparing ${label}`,
+      message: 'Creating your session and loading the examiner.',
+    });
     try {
       const config: SessionConfig = {
         mode: isTrainingMode ? 'intensive_correction' : 'part_practice',
         targetLevel: 'C1',
         feedbackMode: isTrainingMode ? 'immediate' : 'end_only',
         parts: [part],
-        llmModel: 'qwen2.5:7b-instruct',
-        whisperModel: 'small.en',
-        ttsVoice: 'british_male',
+        llmModel: preferences.llmModel,
+        whisperModel: preferences.whisperModel,
+        ttsVoice: preferences.ttsVoice,
         audioRetentionPolicy: '7_days',
         enablePronunciationAnalysis: true,
       };
@@ -119,22 +141,33 @@ export default function HomePage() {
       navigate(`/session/${session.id}`);
     } catch (error) {
       console.error('Failed to create session:', error);
-      alert('Failed to start session. Please check system health.');
+      notify({
+        type: 'error',
+        title: 'Could not start session',
+        message: 'Please check system health in Settings.',
+      });
     } finally {
-      setIsCreating(false);
+      setCreatingLabel(null);
+      dismiss(toastId);
     }
   }
 
   async function startFullMockExam() {
-    setIsCreating(true);
+    const label = isTrainingMode ? 'Full practice' : 'Full exam';
+    setCreatingLabel(label);
+    const toastId = notify({
+      type: 'loading',
+      title: `Preparing ${label}`,
+      message: 'Creating your session and warming up the first prompt.',
+    });
     try {
       const config: SessionConfig = {
         mode: isTrainingMode ? 'conversation' : 'full_mock',
         targetLevel: 'C1',
         feedbackMode: isTrainingMode ? 'immediate' : 'end_only',
-        llmModel: 'qwen2.5:7b-instruct',
-        whisperModel: 'small.en',
-        ttsVoice: 'british_male',
+        llmModel: preferences.llmModel,
+        whisperModel: preferences.whisperModel,
+        ttsVoice: preferences.ttsVoice,
         audioRetentionPolicy: '7_days',
         enablePronunciationAnalysis: true,
       };
@@ -143,11 +176,18 @@ export default function HomePage() {
       navigate(`/session/${session.id}`);
     } catch (error) {
       console.error('Failed to create session:', error);
-      alert('Failed to start session. Please check system health.');
+      notify({
+        type: 'error',
+        title: 'Could not start session',
+        message: 'Please check system health in Settings.',
+      });
     } finally {
-      setIsCreating(false);
+      setCreatingLabel(null);
+      dismiss(toastId);
     }
   }
+
+  const isCreating = creatingLabel !== null;
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -263,7 +303,7 @@ export default function HomePage() {
                       disabled={!systemHealthy || isCreating}
                       className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {isCreating ? 'Starting...' : `Start Part ${item.part}`}
+                      {creatingLabel === `Part ${item.part}` ? 'Starting this part...' : `Start Part ${item.part}`}
                     </button>
                   </div>
                 </div>
@@ -333,7 +373,9 @@ export default function HomePage() {
                 disabled={!systemHealthy || isCreating}
                 className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isCreating ? 'Starting...' : (isTrainingMode ? 'Start Practice' : 'Start Full Exam')}
+                {creatingLabel === (isTrainingMode ? 'Full practice' : 'Full exam')
+                  ? 'Starting full session...'
+                  : (isTrainingMode ? 'Start Practice' : 'Start Full Exam')}
               </button>
             </div>
           </div>

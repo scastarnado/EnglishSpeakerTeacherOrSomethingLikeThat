@@ -1,1 +1,62 @@
-node_modules
+# Dependencies
+node_modules/
+apps/*/node_modules/
+packages/*/node_modules/
+
+# Local Python environments
+.venv/
+venv/
+env/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python service runtime/build output
+apps/ai-service/build/
+apps/ai-service/dist/
+apps/ai-service/*.spec
+apps/ai-service/cache/
+apps/ai-service/data/
+apps/ai-service/models/
+
+# Frontend/Electron build output
+apps/desktop/dist/
+apps/desktop/dist-electron/
+apps/desktop/release/
+apps/desktop/out/
+
+# Generic build output
+dist/
+build/
+out/
+release/
+.cache/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+electron-log.txt
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

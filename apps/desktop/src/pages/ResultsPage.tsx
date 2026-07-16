@@ -2,10 +2,15 @@ import { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, Trophy, AlertCircle, ChevronDown, ChevronUp, Copy, RotateCcw } from 'lucide-react';
 import type { Session, Assessment, Turn } from '@shared/index';
+import { useToast } from '../components/ToastProvider';
+
+const STOP_WORDS = new Set(['the', 'and', 'to', 'a', 'of', 'in', 'it', 'is', 'i', 'you', 'that', 'for', 'with', 'on', 'this', 'they', 'are', 'was', 'but', 'so', 'because']);
+const DISCOURSE_MARKERS = ['however', 'whereas', 'although', 'nevertheless', 'therefore', 'moreover', 'consequently', 'on the other hand', 'for instance'];
 
 export default function ResultsPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const { notify } = useToast();
 
   const [session, setSession] = useState<Session | null>(null);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
@@ -57,6 +62,11 @@ export default function ResultsPage() {
       }
     } catch (error) {
       console.error('Failed to load results:', error);
+      notify({
+        type: 'error',
+        title: 'Results failed to load',
+        message: 'Try opening the session from History again.',
+      });
     }
   }
 
@@ -79,7 +89,11 @@ export default function ResultsPage() {
       setAssessment(generated);
     } catch (error) {
       console.error('Failed to generate assessment:', error);
-      alert('Assessment generation failed. Please try again.');
+      notify({
+        type: 'error',
+        title: 'Assessment generation failed',
+        message: 'Please try again.',
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -109,10 +123,19 @@ export default function ResultsPage() {
     if (!session) return;
     try {
       const newSession = await window.electronAPI.session.create(session.config);
+      notify({
+        type: 'success',
+        title: 'Retake created',
+        message: 'Starting a fresh session with the same setup.',
+      });
       navigate(`/session/${newSession.id}`);
     } catch (error) {
       console.error('Failed to retake session:', error);
-      alert('Could not start a new session with the same setup.');
+      notify({
+        type: 'error',
+        title: 'Could not retake session',
+        message: 'Please try from the Home screen.',
+      });
     }
   }
 
@@ -123,10 +146,18 @@ export default function ResultsPage() {
 
     try {
       await navigator.clipboard.writeText(transcript);
-      alert('Transcript copied to clipboard.');
+      notify({
+        type: 'success',
+        title: 'Transcript copied',
+        message: `${turns.length} turns copied to the clipboard.`,
+      });
     } catch (error) {
       console.error('Failed to copy transcript:', error);
-      alert('Could not copy transcript.');
+      notify({
+        type: 'error',
+        title: 'Copy failed',
+        message: 'Clipboard access was unavailable.',
+      });
     }
   }
 
@@ -197,9 +228,8 @@ export default function ResultsPage() {
   function buildC1Dashboard(currentTurns: Turn[], currentAssessment: Assessment | null) {
     const userTurns = currentTurns.filter((turn) => turn.speaker === 'user');
     const words = userTurns.flatMap((turn) => turn.transcript.toLowerCase().match(/\b[a-z']+\b/g) || []);
-    const stopWords = new Set(['the', 'and', 'to', 'a', 'of', 'in', 'it', 'is', 'i', 'you', 'that', 'for', 'with', 'on', 'this', 'they', 'are', 'was', 'but', 'so', 'because']);
     const wordCounts = words
-      .filter((word) => word.length > 3 && !stopWords.has(word))
+      .filter((word) => word.length > 3 && !STOP_WORDS.has(word))
       .reduce<Record<string, number>>((acc, word) => {
         acc[word] = (acc[word] || 0) + 1;
         return acc;
@@ -208,8 +238,7 @@ export default function ResultsPage() {
       .filter(([, count]) => count >= 3)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
-    const discourseMarkers = ['however', 'whereas', 'although', 'nevertheless', 'therefore', 'moreover', 'consequently', 'on the other hand', 'for instance'];
-    const markerHits = discourseMarkers.filter((marker) => userTurns.some((turn) => turn.transcript.toLowerCase().includes(marker)));
+    const markerHits = DISCOURSE_MARKERS.filter((marker) => userTurns.some((turn) => turn.transcript.toLowerCase().includes(marker)));
     const answerLengthByPart = [1, 2, 3, 4].map((part) => {
       const partTurns = userTurns.filter((turn) => turn.partNumber === part);
       const totalWords = partTurns.reduce((sum, turn) => sum + turn.wordCount, 0);

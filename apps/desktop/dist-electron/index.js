@@ -19035,21 +19035,17 @@ class AIServiceManager {
       this.authToken = crypto__namespace.randomBytes(32).toString("hex");
       this.port = await this.findAvailablePort(8e3);
       console.log(`[AIService] Starting service on port ${this.port}`);
-      const pythonExecutable = await this.getPythonExecutable();
-      console.log(`[AIService] Using Python from: ${pythonExecutable}`);
+      const serviceExecutable = await this.getServiceExecutable();
+      console.log(`[AIService] Using service command: ${serviceExecutable}`);
       console.log(`[AIService] Service path (cwd): ${this.servicePath}`);
-      if (!fs__namespace.existsSync(pythonExecutable)) {
-        throw new Error(`Python executable not found at: ${pythonExecutable}`);
+      if (!fs__namespace.existsSync(serviceExecutable)) {
+        throw new Error(`AI service executable not found at: ${serviceExecutable}`);
       }
       if (!fs__namespace.existsSync(this.servicePath)) {
         throw new Error(`AI service path not found at: ${this.servicePath}`);
       }
-      const isWindows = process.platform === "win32";
-      const command = isWindows ? "cmd.exe" : pythonExecutable;
-      const args = isWindows ? [
-        "/c",
-        `"${pythonExecutable}" -m uvicorn app.main:app --host 127.0.0.1 --port ${this.port}`
-      ] : [
+      const command = serviceExecutable;
+      const args = process.env.NODE_ENV === "development" || !electron.app.isPackaged ? [
         "-m",
         "uvicorn",
         "app.main:app",
@@ -19057,16 +19053,17 @@ class AIServiceManager {
         "127.0.0.1",
         "--port",
         this.port.toString()
-      ];
+      ] : ["--host", "127.0.0.1", "--port", this.port.toString()];
       this.process = child_process.spawn(command, args, {
         cwd: this.servicePath,
         env: {
           ...process.env,
           AI_SERVICE_AUTH_TOKEN: this.authToken,
-          AI_SERVICE_DATA_PATH: this.userDataPath
+          AI_SERVICE_DATA_PATH: this.userDataPath,
+          AI_SERVICE_CACHE_PATH: path$1.join(this.userDataPath, "cache")
         },
         stdio: ["ignore", "pipe", "pipe"],
-        windowsVerbatimArguments: true
+        windowsVerbatimArguments: process.env.NODE_ENV === "development"
       });
       (_a = this.process.stdout) == null ? void 0 : _a.on("data", (data) => {
         console.log("[AIService]", data.toString().trim());
@@ -19190,7 +19187,7 @@ class AIServiceManager {
   async findAvailablePort(startPort) {
     return startPort + Math.floor(Math.random() * 1e3);
   }
-  async getPythonExecutable() {
+  async getServiceExecutable() {
     if (process.env.NODE_ENV === "development" || !electron.app.isPackaged) {
       const workspaceRoot = path$1.join(electron.app.getAppPath(), "../..");
       const venvPath = path$1.join(workspaceRoot, ".venv");
@@ -19198,10 +19195,9 @@ class AIServiceManager {
       return pythonPath;
     }
     if (process.platform === "win32") {
-      return path$1.join(process.resourcesPath, "python", "python.exe");
-    } else {
-      return path$1.join(process.resourcesPath, "python", "bin", "python3");
+      return path$1.join(this.servicePath, "ai-service.exe");
     }
+    return path$1.join(this.servicePath, "ai-service");
   }
 }
 class AudioManager {

@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Eye, Trash2, Loader2 } from 'lucide-react';
+import { Calendar, Clock, Eye, Loader2, Search } from 'lucide-react';
 import type { Session } from '@shared/index';
+import { useToast } from '../components/ToastProvider';
 
 export default function HistoryPage() {
   const navigate = useNavigate();
+  const { notify } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     loadSessions();
@@ -22,10 +26,25 @@ export default function HistoryPage() {
       setSessions(loadedSessions);
     } catch (error) {
       console.error('Failed to load sessions:', error);
+      notify({
+        type: 'error',
+        title: 'History failed to load',
+        message: 'Try again after restarting the app.',
+      });
     } finally {
       setIsLoading(false);
     }
   }
+
+  const filteredSessions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return sessions.filter((session) => {
+      const matchesStatus = statusFilter === 'all' || session.status === statusFilter;
+      const partLabel = session.config.parts?.join(', ') || 'full exam';
+      const searchable = `${session.mode} ${session.status} ${partLabel} ${new Date(session.startedAt).toLocaleDateString()}`.toLowerCase();
+      return matchesStatus && (!normalizedQuery || searchable.includes(normalizedQuery));
+    });
+  }, [query, sessions, statusFilter]);
 
   function getStatusBadge(status: string) {
     const colors = {
@@ -59,6 +78,28 @@ export default function HistoryPage() {
         </p>
       </div>
 
+      <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px]">
+        <label className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by mode, status, date, or part"
+            className="w-full rounded-md border border-border bg-background py-2 pl-9 pr-3"
+          />
+        </label>
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="rounded-md border border-border bg-background px-3 py-2"
+        >
+          <option value="all">All statuses</option>
+          <option value="completed">Completed</option>
+          <option value="in_progress">In progress</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+
       {sessions.length === 0 ? (
         <div className="text-center py-12">
           <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
@@ -73,9 +114,13 @@ export default function HistoryPage() {
             Start Practice
           </button>
         </div>
+      ) : filteredSessions.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
+          No sessions match your filters.
+        </div>
       ) : (
         <div className="space-y-4">
-          {sessions.map((session) => (
+          {filteredSessions.map((session) => (
             <div
               key={session.id}
               className="p-6 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
@@ -129,12 +174,6 @@ export default function HistoryPage() {
                       View Results
                     </button>
                   )}
-                  <button
-                    className="p-2 border border-border rounded-md hover:bg-destructive hover:text-destructive-foreground transition-colors"
-                    title="Delete session"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
               </div>
             </div>
