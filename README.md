@@ -2,6 +2,14 @@
 
 A local-first desktop application for practicing the C1 Advanced English Speaking examination with AI-powered interlocutors, co-candidates, and assessors.
 
+<img width="1896" height="982" alt="image" src="https://github.com/user-attachments/assets/96c1e34a-362d-4ab1-a146-96c106a5058a" />
+
+<img width="1919" height="999" alt="image" src="https://github.com/user-attachments/assets/32f34e47-226d-4ee2-a151-a6faed6202ec" />
+
+<img width="1919" height="1007" alt="image" src="https://github.com/user-attachments/assets/e309afb2-ed9b-46e8-a277-090ce9de5c7d" />
+
+
+
 ## ⚠️ Disclaimer
 
 **This is an independent practice tool and is not affiliated with, endorsed by, or connected to Cambridge University Press & Assessment.** This application does not provide official Cambridge assessment or certification. It is designed solely as a practice aid for learners preparing for C1-level speaking examinations.
