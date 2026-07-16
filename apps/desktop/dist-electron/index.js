@@ -19806,6 +19806,7 @@ async function createWindow() {
   mainWindow = new electron.BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -19828,7 +19829,6 @@ async function createWindow() {
       process.env.VITE_DEV_SERVER_URL
     );
     await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
   } else {
     const indexPath = path__namespace.join(process.env.DIST, "index.html");
     console.log("[Main] Loading file:", indexPath);
@@ -19908,6 +19908,7 @@ async function shutdownServices() {
 electron.app.whenReady().then(async () => {
   try {
     console.log("[Main] App ready, initializing...");
+    electron.Menu.setApplicationMenu(null);
     await initializeServices();
     console.log("[Main] Services initialized, creating window...");
     await createWindow();
