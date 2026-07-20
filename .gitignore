@@ -24,6 +24,9 @@ apps/ai-service/cache/
 apps/ai-service/data/
 apps/ai-service/models/
 
+# Local AI image-generation runtime and downloaded models
+local-ai/
+
 # Frontend/Electron build output
 apps/desktop/dist/
 apps/desktop/dist-electron/

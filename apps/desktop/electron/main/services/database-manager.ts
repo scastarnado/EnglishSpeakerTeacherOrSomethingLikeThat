@@ -2,8 +2,11 @@ import { Assessment, Session, Speaker, Turn } from '@shared/index';
 import crypto from 'crypto';
 import { app } from 'electron';
 import * as fs from 'fs/promises';
+import { createRequire } from 'module';
 import path from 'path';
-import initSqlJs, { Database } from 'sql.js';
+import type { Database } from 'sql.js';
+
+const require = createRequire(import.meta.url);
 
 export class DatabaseManager {
 	private db: Database | null = null;
@@ -39,6 +42,7 @@ export class DatabaseManager {
 			console.log('[Database] Loading WASM from:', wasmPath);
 			const wasmBinary = await fs.readFile(wasmPath);
 
+			const initSqlJs = this.loadSqlJs();
 			const SQL = await initSqlJs({
 				wasmBinary,
 			});
@@ -610,5 +614,13 @@ export class DatabaseManager {
 	getDb(): Database {
 		if (!this.db) throw new Error('Database not initialized');
 		return this.db;
+	}
+
+	private loadSqlJs(): typeof import('sql.js').default {
+		if (app.isPackaged) {
+			return require(path.join(process.resourcesPath, 'sql-wasm.js'));
+		}
+
+		return require('sql.js');
 	}
 }

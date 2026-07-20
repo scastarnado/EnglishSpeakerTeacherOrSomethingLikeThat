@@ -1,11 +1,66 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, Trophy, AlertCircle, ChevronDown, ChevronUp, Copy, RotateCcw } from 'lucide-react';
+import { AlertCircle, BookOpen, ChevronDown, ChevronUp, Copy, Loader2, RotateCcw, Target, Trophy } from 'lucide-react';
 import type { Session, Assessment, Turn } from '@shared/index';
 import { useToast } from '../components/ToastProvider';
 
 const STOP_WORDS = new Set(['the', 'and', 'to', 'a', 'of', 'in', 'it', 'is', 'i', 'you', 'that', 'for', 'with', 'on', 'this', 'they', 'are', 'was', 'but', 'so', 'because']);
 const DISCOURSE_MARKERS = ['however', 'whereas', 'although', 'nevertheless', 'therefore', 'moreover', 'consequently', 'on the other hand', 'for instance'];
+const COMPARISON_LANGUAGE = ['whereas', 'while', 'in contrast', 'compared with', 'both', 'similarly', 'unlike'];
+const SPECULATION_LANGUAGE = ['might', 'may', 'could', 'seems', 'appears', 'perhaps', 'probably', 'looks as if'];
+const ABSTRACT_LANGUAGE = ['society', 'in the long run', 'arguably', 'tends to', 'the extent to which', 'broader', 'implications'];
+const CRITERION_LABELS: Record<string, string> = {
+  grammaticalResource: 'Grammatical Resource',
+  lexicalResource: 'Lexical Resource',
+  discourseManagement: 'Discourse Management',
+  pronunciation: 'Pronunciation',
+  interactiveCommunication: 'Interactive Communication',
+  globalAchievement: 'Global Achievement',
+};
+
+const EXPRESSION_BANK = [
+  {
+    title: 'Part 2: compare and speculate',
+    items: [
+      'The key similarity is that both pictures show...',
+      'Whereas the first picture suggests..., the second one seems to highlight...',
+      'I imagine they might be feeling... because...',
+      'What stands out to me is...',
+      'This could reflect a wider issue, namely...',
+    ],
+  },
+  {
+    title: 'Part 3: collaborate and decide',
+    items: [
+      'Shall we start with...?',
+      'I take your point, although I would add that...',
+      'Which of these do you think has the greatest impact?',
+      'If we had to choose one, I would lean towards...',
+      'So, can we agree that... is probably the strongest option?',
+    ],
+  },
+  {
+    title: 'Part 4: abstract discussion',
+    items: [
+      'It depends largely on whether...',
+      'From a broader social perspective...',
+      'One possible drawback is that...',
+      'That may be true in some contexts, but...',
+      'In the long term, this could lead to...',
+    ],
+  },
+  {
+    title: 'C1 idioms, phrasal verbs and collocations',
+    items: [
+      'strike a balance between',
+      'play a crucial role in',
+      'come up with a solution',
+      'take something for granted',
+      'a double-edged sword',
+      'put things into perspective',
+    ],
+  },
+];
 
 export default function ResultsPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -24,6 +79,8 @@ export default function ResultsPage() {
     reviewQueue: true,
     strengths: true,
     corrections: false,
+    debrief: true,
+    language: true,
   });
 
   useEffect(() => {
@@ -39,7 +96,8 @@ export default function ResultsPage() {
   }, [assessment]);
 
   const c1Dashboard = useMemo(() => buildC1Dashboard(turns, assessment), [turns, assessment]);
-  const answerComparisons = useMemo(() => buildAnswerComparisons(turns), [turns]);
+  const answerComparisons = useMemo(() => buildAnswerComparisons(turns), [turns, assessment]);
+  const reviewInsights = useMemo(() => buildReviewInsights(turns, assessment), [turns, assessment]);
 
   async function loadResults() {
     try {
@@ -272,20 +330,138 @@ export default function ResultsPage() {
       .filter((turn) => turn.speaker === 'user')
       .slice(0, 6)
       .map((turn) => {
+        const turnCorrection = assessment?.corrections.find((correction) => correction.turnId === turn.id);
         const cleaned = turn.transcript.replace(/\b(um|uh)\b/gi, '').replace(/\s+/g, ' ').trim();
         return {
           id: turn.id,
           part: turn.partNumber,
           original: turn.transcript,
-          natural: cleaned
+          natural: turnCorrection?.naturalC1Alternative || (cleaned
             ? `A natural C1 version would keep your main idea but organise it more clearly: ${cleaned}`
-            : 'No transcript available for this turn.',
-          stronger: cleaned
-            ? `A stronger C1/C2 answer would add contrast, a concrete example, and a short evaluation of why the point matters.`
-            : 'Try recording a fuller answer to generate a stronger comparison.',
-          why: 'C1 answers usually show control through structure: clear position, developed reason, specific example, and nuanced conclusion.',
+            : 'No transcript available for this turn.'),
+          stronger: turnCorrection?.correctedExcerpt
+            ? `${turnCorrection.correctedExcerpt} Then extend it with a reason, a concrete example and a short evaluation.`
+            : cleaned
+              ? 'A stronger C1/C2 answer would add contrast, a concrete example, and a short evaluation of why the point matters.'
+              : 'Try recording a fuller answer to generate a stronger comparison.',
+          why: turnCorrection?.ruleOrExplanation || 'C1 answers usually show control through structure: clear position, developed reason, specific example, and nuanced conclusion.',
         };
       });
+  }
+
+  function buildReviewInsights(currentTurns: Turn[], currentAssessment: Assessment | null) {
+    const userTurns = currentTurns.filter((turn) => turn.speaker === 'user');
+    const textByPart = [1, 2, 3, 4].reduce<Record<number, string>>((acc, part) => {
+      acc[part] = userTurns
+        .filter((turn) => turn.partNumber === part)
+        .map((turn) => turn.transcript)
+        .join(' ')
+        .toLowerCase();
+      return acc;
+    }, {});
+    const totalWordsByPart = [1, 2, 3, 4].map((part) => ({
+      part,
+      words: userTurns
+        .filter((turn) => turn.partNumber === part)
+        .reduce((sum, turn) => sum + turn.wordCount, 0),
+    }));
+    const hasAny = (text: string, items: string[]) => items.some((item) => text.includes(item));
+    const missing: Array<{ area: string; evidence: string; improve: string }> = [];
+
+    if (textByPart[2] && !hasAny(textByPart[2], COMPARISON_LANGUAGE)) {
+      missing.push({
+        area: 'Part 2 comparison',
+        evidence: 'The long turn did not clearly contrast the two selected photos.',
+        improve: 'Name both photos quickly, then use "whereas", "while", "in contrast" or "the main difference is...".',
+      });
+    }
+    if (textByPart[2] && !hasAny(textByPart[2], SPECULATION_LANGUAGE)) {
+      missing.push({
+        area: 'Part 2 speculation',
+        evidence: 'The answer sounded more descriptive than speculative.',
+        improve: 'Add guesses about feelings, causes and consequences: "they might be...", "it looks as if...", "perhaps this is because...".',
+      });
+    }
+
+    const part2Words = totalWordsByPart.find((item) => item.part === 2)?.words ?? 0;
+    if (part2Words > 0 && part2Words < 90) {
+      missing.push({
+        area: 'Part 2 development',
+        evidence: `Part 2 contained about ${part2Words} words; a full minute usually needs more developed comparison.`,
+        improve: 'Use this loop: compare the situation, speculate about people, then evaluate which situation is more challenging or meaningful.',
+      });
+    }
+
+    if (textByPart[3] && currentAssessment?.interactionAnalysis) {
+      const interaction = currentAssessment.interactionAnalysis;
+      if (interaction.invitedPartner < 1 || interaction.decisionContributions < 1) {
+        missing.push({
+          area: 'Part 3 interaction',
+          evidence: 'There was limited invitation, negotiation or decision language.',
+          improve: 'Use collaborative moves: "What do you think?", "Shall we rule this one out?", "Can we agree on...?".',
+        });
+      }
+    }
+
+    if (textByPart[4] && !hasAny(textByPart[4], ABSTRACT_LANGUAGE)) {
+      missing.push({
+        area: 'Part 4 abstraction',
+        evidence: 'The discussion did not show much abstract or societal framing.',
+        improve: 'Move beyond personal examples with "from a broader perspective", "in the long run", "this raises the question of...".',
+      });
+    }
+
+    Object.entries(currentAssessment?.scores ?? {}).forEach(([key, criterion]) => {
+      if (criterion.score < 4) {
+        missing.push({
+          area: CRITERION_LABELS[key] ?? key,
+          evidence: criterion.summary,
+          improve: getCriterionAdvice(key),
+        });
+      }
+    });
+
+    return {
+      missing: missing.length
+        ? missing.slice(0, 8)
+        : [{
+          area: 'No major missing skill detected',
+          evidence: 'The transcript covered the main speaking functions expected in the selected parts.',
+          improve: 'Keep polishing precision, range and speed under exam timing.',
+        }],
+      improvements: currentAssessment?.priorityImprovements.map((item) => ({
+        area: item.area,
+        evidence: item.reason,
+        improve: item.recommendedExerciseType,
+      })) ?? [],
+      correctionFocus: currentAssessment?.corrections.slice(0, 5).map((correction) => ({
+        category: correction.category,
+        original: correction.originalExcerpt,
+        upgrade: correction.naturalC1Alternative || correction.correctedExcerpt,
+        explanation: correction.ruleOrExplanation,
+        severity: correction.severity,
+      })) ?? [],
+      totalWordsByPart,
+    };
+  }
+
+  function getCriterionAdvice(key: string) {
+    switch (key) {
+      case 'grammaticalResource':
+        return 'Prepare two complex sentence frames per answer: concession, condition and relative clauses.';
+      case 'lexicalResource':
+        return 'Replace general words with precise collocations: "important" -> "crucial/significant", "good" -> "beneficial/effective/convincing".';
+      case 'discourseManagement':
+        return 'Use a visible structure: point, reason, example, contrast and mini-conclusion.';
+      case 'pronunciation':
+        return 'Practise chunking: pause after idea groups, stress key content words, and reduce filler sounds.';
+      case 'interactiveCommunication':
+        return 'Invite, react and negotiate more often, especially in Part 3.';
+      case 'globalAchievement':
+        return 'Answer the task directly first, then develop with nuance instead of adding unrelated detail.';
+      default:
+        return 'Choose one recurring issue and drill it for five short timed answers.';
+    }
   }
 
   if (!session) {
@@ -343,6 +519,135 @@ export default function ResultsPage() {
             {assessment.overallSummary}
           </p>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <button
+          onClick={() => toggleSection('debrief')}
+          className="flex items-center justify-between w-full p-4 rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Exam Debrief: Missing and Improve</h2>
+          </span>
+          {expandedSections.debrief ? <ChevronUp /> : <ChevronDown />}
+        </button>
+
+        {expandedSections.debrief && (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {reviewInsights.missing.map((item, index) => (
+                <div key={`${item.area}-${index}`} className="p-4 rounded-lg border border-warning/30 bg-warning/5">
+                  <p className="text-xs font-semibold uppercase text-warning">What was missing</p>
+                  <h3 className="mt-1 font-semibold">{item.area}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{item.evidence}</p>
+                  <div className="mt-3 rounded-md bg-background p-3 text-sm">
+                    <strong>How to improve:</strong> {item.improve}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {reviewInsights.improvements.length > 0 && (
+              <div className="p-4 rounded-lg border border-border bg-card">
+                <h3 className="font-semibold mb-3">Priority Practice Plan</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {reviewInsights.improvements.slice(0, 6).map((item, index) => (
+                    <div key={`${item.area}-${index}`} className="rounded-md bg-muted/50 p-3 text-sm">
+                      <p className="font-semibold">{item.area}</p>
+                      <p className="mt-1 text-muted-foreground">{item.evidence}</p>
+                      <p className="mt-2 text-primary"><strong>Next drill:</strong> {item.improve}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="p-4 rounded-lg border border-border bg-card">
+              <h3 className="font-semibold mb-3">Evidence From This Test</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {reviewInsights.totalWordsByPart.map((item) => (
+                  <div key={item.part} className="rounded-md bg-muted/50 p-3 text-center">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Part {item.part}</p>
+                    <p className="mt-1 text-2xl font-bold">{item.words}</p>
+                    <p className="text-xs text-muted-foreground">candidate words</p>
+                  </div>
+                ))}
+              </div>
+              {assessment.interactionAnalysis && (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="rounded-md bg-muted/50 p-3">
+                    <p className="font-semibold">{assessment.interactionAnalysis.invitedPartner}</p>
+                    <p className="text-xs text-muted-foreground">partner invitations</p>
+                  </div>
+                  <div className="rounded-md bg-muted/50 p-3">
+                    <p className="font-semibold">{assessment.interactionAnalysis.disagreements}</p>
+                    <p className="text-xs text-muted-foreground">disagreements</p>
+                  </div>
+                  <div className="rounded-md bg-muted/50 p-3">
+                    <p className="font-semibold">{assessment.interactionAnalysis.clarificationRequests}</p>
+                    <p className="text-xs text-muted-foreground">clarification checks</p>
+                  </div>
+                  <div className="rounded-md bg-muted/50 p-3">
+                    <p className="font-semibold">{assessment.interactionAnalysis.decisionContributions}</p>
+                    <p className="text-xs text-muted-foreground">decision moves</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {reviewInsights.correctionFocus.length > 0 && (
+              <div className="p-4 rounded-lg border border-border bg-card">
+                <h3 className="font-semibold mb-3">Exact Transcript Upgrades</h3>
+                <div className="space-y-3">
+                  {reviewInsights.correctionFocus.map((item, index) => (
+                    <div key={`${item.original}-${index}`} className="rounded-md border border-border bg-background p-3 text-sm">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="rounded bg-error/10 px-2 py-1 text-xs font-semibold uppercase text-error">
+                          {item.category}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{item.severity}</span>
+                      </div>
+                      <p><strong>Original:</strong> <span className="line-through text-muted-foreground">{item.original}</span></p>
+                      <p className="mt-2"><strong>C1 upgrade:</strong> {item.upgrade}</p>
+                      <p className="mt-2 text-muted-foreground"><strong>Why it works:</strong> {item.explanation}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6">
+        <button
+          onClick={() => toggleSection('language')}
+          className="flex items-center justify-between w-full p-4 rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Useful C1 Language to Reuse</h2>
+          </span>
+          {expandedSections.language ? <ChevronUp /> : <ChevronDown />}
+        </button>
+
+        {expandedSections.language && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {EXPRESSION_BANK.map((group) => (
+              <div key={group.title} className="p-4 rounded-lg border border-border bg-card">
+                <h3 className="font-semibold mb-3">{group.title}</h3>
+                <div className="flex flex-wrap gap-2">
+                  {group.items.map((item) => (
+                    <span key={item} className="rounded bg-primary/10 px-3 py-1.5 text-sm text-primary">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Scores */}

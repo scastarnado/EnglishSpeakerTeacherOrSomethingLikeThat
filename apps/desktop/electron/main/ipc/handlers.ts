@@ -5,6 +5,9 @@ import {
 	CoCandidateResponse,
 	InterlocutorContext,
 	InterlocutorResponse,
+	Part2ImageGenerationProgress,
+	Part2ImageGenerationRequest,
+	Part2ImageGenerationResponse,
 	Session,
 	SessionConfig,
 	TranscribeRequest,
@@ -13,6 +16,7 @@ import {
 	TTSResponse,
 	Turn,
 } from '@shared/index';
+import axios from 'axios';
 import { ipcMain } from 'electron';
 import { AIServiceManager } from '../services/ai-service-manager';
 import { AudioManager } from '../services/audio-manager';
@@ -22,6 +26,31 @@ interface Services {
 	aiService: AIServiceManager;
 	database: DatabaseManager;
 	audio: AudioManager;
+}
+
+async function checkOllamaDirectly(): Promise<{
+	installed: boolean;
+	running: boolean;
+	version?: string;
+	models: string[];
+}> {
+	try {
+		const [versionResponse, tagsResponse] = await Promise.all([
+			axios.get('http://127.0.0.1:11434/api/version', { timeout: 5000 }),
+			axios.get('http://127.0.0.1:11434/api/tags', { timeout: 5000 }),
+		]);
+
+		return {
+			installed: true,
+			running: true,
+			version: versionResponse.data?.version,
+			models: (tagsResponse.data?.models || [])
+				.map((model: { name?: string }) => model.name)
+				.filter((name: string | undefined): name is string => Boolean(name)),
+		};
+	} catch {
+		return { installed: false, running: false, models: [] };
+	}
 }
 
 export function registerIPCHandlers(services: Services): void {
@@ -246,6 +275,49 @@ export function registerIPCHandlers(services: Services): void {
 	);
 
 	ipcMain.handle(
+		'ai:generate-part2-images',
+		async (
+			_,
+			request: Part2ImageGenerationRequest,
+		): Promise<Part2ImageGenerationResponse> => {
+			const client = aiService.getClient();
+			if (!client) {
+				throw new Error('AI service not available');
+			}
+
+			const response = await client.post<Part2ImageGenerationResponse>(
+				'/images/part2/generate',
+				request,
+				{ timeout: 130000 },
+			);
+
+			return response.data;
+		},
+	);
+
+	ipcMain.handle(
+		'ai:get-part2-image-progress',
+		async (): Promise<Part2ImageGenerationProgress> => {
+			const client = aiService.getClient();
+			if (!client) {
+				return {
+					available: false,
+					progress: 0,
+					etaSeconds: null,
+					stage: 'AI service unavailable',
+				};
+			}
+
+			const response = await client.get<Part2ImageGenerationProgress>(
+				'/images/part2/progress',
+				{ timeout: 5000 },
+			);
+
+			return response.data;
+		},
+	);
+
+	ipcMain.handle(
 		'audio:get-file',
 		async (_, { filePath }: { filePath: string }): Promise<Uint8Array> => {
 			const fs = await import('fs/promises');
@@ -309,7 +381,7 @@ export function registerIPCHandlers(services: Services): void {
 		}> => {
 			const client = aiService.getClient();
 			if (!client) {
-				return { installed: false, running: false, models: [] };
+				return checkOllamaDirectly();
 			}
 
 			try {
@@ -323,7 +395,7 @@ export function registerIPCHandlers(services: Services): void {
 					models: data.models || [],
 				};
 			} catch {
-				return { installed: false, running: false, models: [] };
+				return checkOllamaDirectly();
 			}
 		},
 	);

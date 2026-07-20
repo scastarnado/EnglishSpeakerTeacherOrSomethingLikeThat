@@ -235,12 +235,13 @@ async def test_model(request: dict):
 # Import route modules
 # ============================================================================
 
-from app.api import audio_routes, exam_routes, assessment_routes, tts_routes
+from app.api import audio_routes, exam_routes, assessment_routes, tts_routes, image_routes
 
 app.include_router(audio_routes.router, prefix="/audio", tags=["audio"])
 app.include_router(exam_routes.router, prefix="/exam", tags=["exam"])
 app.include_router(assessment_routes.router, prefix="/assessment", tags=["assessment"])
 app.include_router(tts_routes.router, prefix="/tts", tags=["tts"])
+app.include_router(image_routes.router, prefix="/images", tags=["images"])
 
 
 if __name__ == "__main__":

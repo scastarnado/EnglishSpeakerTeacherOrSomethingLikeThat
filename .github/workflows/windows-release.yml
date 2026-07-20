@@ -1,0 +1,107 @@
+name: Build Windows EXE and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build installer and publish release
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/ai-service/requirements.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        working-directory: apps/ai-service
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Type-check desktop app
+        run: npm run type-check --workspace=@c1sc/desktop
+
+      - name: Package Python AI service
+        run: npm run package:ai
+
+      - name: Build Windows installer
+        run: npm run build:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Locate installer
+        id: installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "apps/desktop/release" -Recurse -Filter "*.exe" |
+            Where-Object { $_.Name -like "*Setup*.exe" } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            throw "Could not find the generated Windows installer."
+          }
+
+          $blockmap = Get-ChildItem -Path $installer.DirectoryName -Filter "$($installer.Name).blockmap" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+          if ($blockmap) {
+            "blockmap=$($blockmap.FullName)" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            ${{ steps.installer.outputs.installer }}
+            ${{ steps.installer.outputs.blockmap }}
+          if-no-files-found: error
+
+      - name: Build release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
+          $tag = "auto-win-${{ github.run_number }}-$shortSha"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "name=Windows build $tag" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            ${{ steps.installer.outputs.installer }}
+            ${{ steps.installer.outputs.blockmap }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

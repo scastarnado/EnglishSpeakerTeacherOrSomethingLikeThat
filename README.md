@@ -311,6 +311,14 @@ You can also use the helper script:
 
 Only do this after the app works in development mode.
 
+The easiest local build command is:
+
+```powershell
+npm run release:win
+```
+
+That packages the Python AI service first, then builds the Windows installer.
+
 First, build the Python AI service into an executable:
 
 ```powershell
@@ -334,6 +342,24 @@ apps\desktop\release\1.0.0\C1 Speaking Coach Setup 1.0.0.exe
 ```
 
 Double-click that file to install the app. Keep **Create desktop shortcut** enabled. After installation, double-click the **C1 Speaking Coach** shortcut on your Desktop.
+
+#### Automatic GitHub Releases
+
+This repository includes a GitHub Actions workflow at:
+
+```text
+.github/workflows/windows-release.yml
+```
+
+When you push to the `main` branch, GitHub will:
+
+1. install Node and Python dependencies,
+2. package the Python AI service with PyInstaller,
+3. build the Windows installer with Electron Builder,
+4. upload the installer as a workflow artifact,
+5. create a new GitHub Release with the `.exe` attached.
+
+You can also run the workflow manually from the **Actions** tab in GitHub.
 
 ### Easy Setup Script
 

@@ -35,6 +35,22 @@ class Settings(BaseSettings):
     DEFAULT_WHISPER_MODEL: str = "small.en"
     DEFAULT_TTS_VOICE: str = "british_male"
 
+    # Optional local image generation for realistic Part 2 prompts.
+    # Compatible with local Stable Diffusion WebUI / SD.Next APIs started with --api.
+    LOCAL_IMAGE_PROVIDER: str = os.getenv("LOCAL_IMAGE_PROVIDER", "stable-diffusion-webui")
+    STABLE_DIFFUSION_API_URL: str = os.getenv("STABLE_DIFFUSION_API_URL", "http://127.0.0.1:7860")
+    LOCAL_IMAGE_WIDTH: int = int(os.getenv("LOCAL_IMAGE_WIDTH", "640"))
+    LOCAL_IMAGE_HEIGHT: int = int(os.getenv("LOCAL_IMAGE_HEIGHT", "448"))
+    LOCAL_IMAGE_STEPS: int = int(os.getenv("LOCAL_IMAGE_STEPS", "14"))
+    LOCAL_IMAGE_CFG_SCALE: float = float(os.getenv("LOCAL_IMAGE_CFG_SCALE", "5.5"))
+    LOCAL_IMAGE_SAMPLER: str = os.getenv("LOCAL_IMAGE_SAMPLER", "Euler a")
+    LOCAL_IMAGE_CHECKPOINT: Optional[str] = os.getenv(
+        "LOCAL_IMAGE_CHECKPOINT", "Realistic_Vision_V6.0_NV_B1_fp16.safetensors"
+    )
+    LOCAL_IMAGE_AUTOSTART: bool = os.getenv("LOCAL_IMAGE_AUTOSTART", "true").lower() not in ("0", "false", "no")
+    LOCAL_IMAGE_WEBUI_PATH: Optional[str] = os.getenv("LOCAL_IMAGE_WEBUI_PATH")
+    LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS: int = int(os.getenv("LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS", "120"))
+
     # Performance settings
     MAX_CONCURRENT_TRANSCRIPTIONS: int = 2
     MAX_CONCURRENT_TTS: int = 3

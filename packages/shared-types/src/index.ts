@@ -438,6 +438,55 @@ export const TTSResponseSchema = z.object({
 
 export type TTSResponse = z.infer<typeof TTSResponseSchema>;
 
+export const GeneratedImageAssetSchema = z.object({
+	id: z.string(),
+	url: z.string(),
+	altText: z.string(),
+	licence: z.string().optional(),
+	prompt: z.string().optional(),
+});
+
+export type GeneratedImageAsset = z.infer<typeof GeneratedImageAssetSchema>;
+
+export const Part2ImageGenerationRequestSchema = z.object({
+	sessionId: z.string().uuid(),
+	taskId: z.string(),
+	taskTitle: z.string(),
+	instructions: z.string(),
+	questions: z.array(z.string()),
+	topicTags: z.array(z.string()),
+	imageDescriptions: z.array(z.string()).optional(),
+	count: z.number().min(1).max(3).default(3),
+});
+
+export type Part2ImageGenerationRequest = z.infer<
+	typeof Part2ImageGenerationRequestSchema
+>;
+
+export const Part2ImageGenerationResponseSchema = z.object({
+	images: z.array(GeneratedImageAssetSchema),
+	fromCache: z.boolean(),
+	provider: z.string(),
+	fallbackReason: z.string().optional(),
+});
+
+export type Part2ImageGenerationResponse = z.infer<
+	typeof Part2ImageGenerationResponseSchema
+>;
+
+export const Part2ImageGenerationProgressSchema = z.object({
+	available: z.boolean(),
+	progress: z.number().min(0).max(1),
+	etaSeconds: z.number().nullable(),
+	currentImageIndex: z.number().nullable().optional(),
+	totalImages: z.number().nullable().optional(),
+	stage: z.string(),
+});
+
+export type Part2ImageGenerationProgress = z.infer<
+	typeof Part2ImageGenerationProgressSchema
+>;
+
 export const InterlocutorContextSchema = z.object({
 	sessionId: z.string().uuid(),
 	mode: SessionModeSchema,
@@ -646,6 +695,14 @@ export type IPCChannels = {
 		response: Assessment;
 	};
 	'ai:tts-generate': { request: TTSRequest; response: TTSResponse };
+	'ai:generate-part2-images': {
+		request: Part2ImageGenerationRequest;
+		response: Part2ImageGenerationResponse;
+	};
+	'ai:get-part2-image-progress': {
+		request: void;
+		response: Part2ImageGenerationProgress;
+	};
 
 	// Database
 	'db:save-turn': { request: Turn; response: void };

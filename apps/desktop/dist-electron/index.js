@@ -42,7 +42,8 @@ const http2 = require("http2");
 const zlib = require("zlib");
 const child_process = require("child_process");
 const fs$2 = require("fs/promises");
-const initSqlJs = require("sql.js");
+const module$1 = require("module");
+var _documentCurrentScript = typeof document !== "undefined" ? document.currentScript : null;
 function _interopNamespaceDefault(e) {
   const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
   if (e) {
@@ -63,266 +64,6 @@ const path__namespace = /* @__PURE__ */ _interopNamespaceDefault(path$1);
 const fs__namespace = /* @__PURE__ */ _interopNamespaceDefault(fs$1);
 const crypto__namespace = /* @__PURE__ */ _interopNamespaceDefault(crypto$1);
 const fs__namespace$1 = /* @__PURE__ */ _interopNamespaceDefault(fs$2);
-function registerIPCHandlers(services) {
-  const { aiService, database, audio } = services;
-  electron.ipcMain.handle(
-    "session:create",
-    async (_, config) => {
-      const session = {
-        profileId: "default",
-        // TODO: Support multiple profiles
-        mode: config.mode,
-        config,
-        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        status: "created"
-      };
-      return await database.createSession(session);
-    }
-  );
-  electron.ipcMain.handle(
-    "session:start",
-    async (_, { sessionId }) => {
-      await database.updateSession(sessionId, {
-        status: "active"
-      });
-    }
-  );
-  electron.ipcMain.handle(
-    "session:complete",
-    async (_, { sessionId }) => {
-      await database.updateSession(sessionId, {
-        status: "completed",
-        endedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
-    }
-  );
-  electron.ipcMain.handle(
-    "session:cancel",
-    async (_, { sessionId }) => {
-      await database.updateSession(sessionId, {
-        status: "cancelled",
-        endedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
-    }
-  );
-  electron.ipcMain.handle(
-    "session:get",
-    async (_, { sessionId }) => {
-      return await database.getSession(sessionId);
-    }
-  );
-  electron.ipcMain.handle(
-    "session:list",
-    async (_, { profileId, limit }) => {
-      return await database.listSessions(profileId, limit);
-    }
-  );
-  electron.ipcMain.handle(
-    "audio:save-recording",
-    async (_, { sessionId, audioData }) => {
-      const buffer = Buffer.from(audioData);
-      const relativePath = await audio.saveRecording(sessionId, buffer, "webm");
-      return { path: relativePath };
-    }
-  );
-  electron.ipcMain.handle(
-    "audio:transcribe",
-    async (_, request) => {
-      const client = aiService.getClient();
-      if (!client) {
-        throw new Error("AI service not available");
-      }
-      const absolutePath = audio.getFullPath(request.audioPath);
-      const response = await client.post(
-        "/audio/transcribe",
-        {
-          ...request,
-          audioPath: absolutePath
-        }
-      );
-      return response.data;
-    }
-  );
-  electron.ipcMain.handle(
-    "audio:analyze",
-    async (_, { audioPath }) => {
-      const client = aiService.getClient();
-      if (!client) {
-        throw new Error("AI service not available");
-      }
-      const absolutePath = audio.getFullPath(audioPath);
-      const response = await client.post("/audio/analyze", {
-        audioPath: absolutePath
-      });
-      return response.data;
-    }
-  );
-  electron.ipcMain.handle(
-    "ai:interlocutor-respond",
-    async (_, context) => {
-      const client = aiService.getClient();
-      if (!client) {
-        throw new Error("AI service not available");
-      }
-      const response = await client.post(
-        "/exam/interlocutor/respond",
-        context
-      );
-      return response.data;
-    }
-  );
-  electron.ipcMain.handle(
-    "ai:co-candidate-respond",
-    async (_, context) => {
-      const client = aiService.getClient();
-      if (!client) {
-        throw new Error("AI service not available");
-      }
-      const response = await client.post(
-        "/exam/co-candidate/respond",
-        context
-      );
-      return response.data;
-    }
-  );
-  electron.ipcMain.handle(
-    "ai:generate-assessment",
-    async (_, request) => {
-      const client = aiService.getClient();
-      if (!client) {
-        throw new Error("AI service not available");
-      }
-      await database.updateSession(request.sessionId, {
-        status: "processing"
-      });
-      try {
-        const response = await client.post(
-          "/assessment/generate",
-          request,
-          {
-            timeout: 18e4
-            // 3 minutes for assessment
-          }
-        );
-        await database.saveAssessment(response.data);
-        await database.updateSession(request.sessionId, {
-          status: "completed",
-          estimatedLevel: response.data.estimatedOverallLevel
-        });
-        return response.data;
-      } catch (error) {
-        await database.updateSession(request.sessionId, {
-          status: "failed"
-        });
-        throw error;
-      }
-    }
-  );
-  electron.ipcMain.handle(
-    "ai:tts-generate",
-    async (_, request) => {
-      const client = aiService.getClient();
-      if (!client) {
-        throw new Error("AI service not available");
-      }
-      const response = await client.post("/tts/speak", request);
-      return response.data;
-    }
-  );
-  electron.ipcMain.handle(
-    "audio:get-file",
-    async (_, { filePath }) => {
-      const fs2 = await import("fs/promises");
-      const buffer = await fs2.readFile(filePath);
-      return new Uint8Array(buffer);
-    }
-  );
-  electron.ipcMain.handle("db:save-turn", async (_, turn) => {
-    await database.saveTurn(turn);
-  });
-  electron.ipcMain.handle(
-    "db:get-turns",
-    async (_, { sessionId }) => {
-      return await database.getTurns(sessionId);
-    }
-  );
-  electron.ipcMain.handle(
-    "db:get-assessment",
-    async (_, { sessionId }) => {
-      return await database.getAssessment(sessionId);
-    }
-  );
-  electron.ipcMain.handle(
-    "system:check-health",
-    async () => {
-      const aiHealthy = await aiService.checkHealth();
-      return {
-        healthy: aiHealthy,
-        details: {
-          aiService: aiHealthy,
-          aiServicePort: aiService.getPort(),
-          database: !!database.getDb()
-        }
-      };
-    }
-  );
-  electron.ipcMain.handle(
-    "system:check-ollama",
-    async () => {
-      const client = aiService.getClient();
-      if (!client) {
-        return { installed: false, running: false, models: [] };
-      }
-      try {
-        const response = await client.get("/system/ollama-status");
-        const data = response.data;
-        return {
-          installed: data.available || false,
-          running: data.available || false,
-          version: data.version,
-          models: data.models || []
-        };
-      } catch {
-        return { installed: false, running: false, models: [] };
-      }
-    }
-  );
-  electron.ipcMain.handle(
-    "models:list",
-    async (_, { type: type2 }) => {
-      const client = aiService.getClient();
-      if (!client) {
-        return [];
-      }
-      try {
-        const response = await client.get("/models", { params: { type: type2 } });
-        return response.data;
-      } catch {
-        return [];
-      }
-    }
-  );
-  electron.ipcMain.handle(
-    "models:test",
-    async (_, { type: type2, name }) => {
-      var _a, _b;
-      const client = aiService.getClient();
-      if (!client) {
-        return { success: false, message: "AI service not available" };
-      }
-      try {
-        const response = await client.post("/models/test", { type: type2, name });
-        return response.data;
-      } catch (error) {
-        return {
-          success: false,
-          message: ((_b = (_a = error.response) == null ? void 0 : _a.data) == null ? void 0 : _b.message) || error.message
-        };
-      }
-    }
-  );
-  console.log("[IPC] All handlers registered");
-}
 function bind$2(fn, thisArg) {
   return function wrap2() {
     return fn.apply(thisArg, arguments);
@@ -12466,7 +12207,14 @@ var _eval = EvalError;
 var range = RangeError;
 var ref = ReferenceError;
 var syntax = SyntaxError;
-var type = TypeError;
+var type;
+var hasRequiredType;
+function requireType() {
+  if (hasRequiredType) return type;
+  hasRequiredType = 1;
+  type = TypeError;
+  return type;
+}
 var uri = URIError;
 var abs$1 = Math.abs;
 var floor$1 = Math.floor;
@@ -12712,7 +12460,7 @@ function requireCallBindApplyHelpers() {
   if (hasRequiredCallBindApplyHelpers) return callBindApplyHelpers;
   hasRequiredCallBindApplyHelpers = 1;
   var bind3 = functionBind;
-  var $TypeError2 = type;
+  var $TypeError2 = requireType();
   var $call2 = requireFunctionCall();
   var $actualApply = requireActualApply();
   callBindApplyHelpers = function callBindBasic(args) {
@@ -12785,7 +12533,7 @@ var $EvalError = _eval;
 var $RangeError = range;
 var $ReferenceError = ref;
 var $SyntaxError = syntax;
-var $TypeError$1 = type;
+var $TypeError$1 = requireType();
 var $URIError = uri;
 var abs = abs$1;
 var floor = floor$1;
@@ -13116,7 +12864,7 @@ var GetIntrinsic2 = getIntrinsic;
 var $defineProperty = GetIntrinsic2("%Object.defineProperty%", true);
 var hasToStringTag = requireShams()();
 var hasOwn$1 = hasown;
-var $TypeError = type;
+var $TypeError = requireType();
 var toStringTag = hasToStringTag ? Symbol.toStringTag : null;
 var esSetTostringtag = function setToStringTag(object, value) {
   var overrideIfSet = arguments.length > 2 && !!arguments[2] && arguments[2].force;
@@ -19007,6 +18755,317 @@ const {
   mergeConfig,
   create
 } = axios;
+async function checkOllamaDirectly() {
+  var _a, _b;
+  try {
+    const [versionResponse, tagsResponse] = await Promise.all([
+      axios.get("http://127.0.0.1:11434/api/version", { timeout: 5e3 }),
+      axios.get("http://127.0.0.1:11434/api/tags", { timeout: 5e3 })
+    ]);
+    return {
+      installed: true,
+      running: true,
+      version: (_a = versionResponse.data) == null ? void 0 : _a.version,
+      models: (((_b = tagsResponse.data) == null ? void 0 : _b.models) || []).map((model) => model.name).filter((name) => Boolean(name))
+    };
+  } catch {
+    return { installed: false, running: false, models: [] };
+  }
+}
+function registerIPCHandlers(services) {
+  const { aiService, database, audio } = services;
+  electron.ipcMain.handle(
+    "session:create",
+    async (_, config) => {
+      const session = {
+        profileId: "default",
+        // TODO: Support multiple profiles
+        mode: config.mode,
+        config,
+        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        status: "created"
+      };
+      return await database.createSession(session);
+    }
+  );
+  electron.ipcMain.handle(
+    "session:start",
+    async (_, { sessionId }) => {
+      await database.updateSession(sessionId, {
+        status: "active"
+      });
+    }
+  );
+  electron.ipcMain.handle(
+    "session:complete",
+    async (_, { sessionId }) => {
+      await database.updateSession(sessionId, {
+        status: "completed",
+        endedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  );
+  electron.ipcMain.handle(
+    "session:cancel",
+    async (_, { sessionId }) => {
+      await database.updateSession(sessionId, {
+        status: "cancelled",
+        endedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  );
+  electron.ipcMain.handle(
+    "session:get",
+    async (_, { sessionId }) => {
+      return await database.getSession(sessionId);
+    }
+  );
+  electron.ipcMain.handle(
+    "session:list",
+    async (_, { profileId, limit }) => {
+      return await database.listSessions(profileId, limit);
+    }
+  );
+  electron.ipcMain.handle(
+    "audio:save-recording",
+    async (_, { sessionId, audioData }) => {
+      const buffer = Buffer.from(audioData);
+      const relativePath = await audio.saveRecording(sessionId, buffer, "webm");
+      return { path: relativePath };
+    }
+  );
+  electron.ipcMain.handle(
+    "audio:transcribe",
+    async (_, request) => {
+      const client = aiService.getClient();
+      if (!client) {
+        throw new Error("AI service not available");
+      }
+      const absolutePath = audio.getFullPath(request.audioPath);
+      const response = await client.post(
+        "/audio/transcribe",
+        {
+          ...request,
+          audioPath: absolutePath
+        }
+      );
+      return response.data;
+    }
+  );
+  electron.ipcMain.handle(
+    "audio:analyze",
+    async (_, { audioPath }) => {
+      const client = aiService.getClient();
+      if (!client) {
+        throw new Error("AI service not available");
+      }
+      const absolutePath = audio.getFullPath(audioPath);
+      const response = await client.post("/audio/analyze", {
+        audioPath: absolutePath
+      });
+      return response.data;
+    }
+  );
+  electron.ipcMain.handle(
+    "ai:interlocutor-respond",
+    async (_, context) => {
+      const client = aiService.getClient();
+      if (!client) {
+        throw new Error("AI service not available");
+      }
+      const response = await client.post(
+        "/exam/interlocutor/respond",
+        context
+      );
+      return response.data;
+    }
+  );
+  electron.ipcMain.handle(
+    "ai:co-candidate-respond",
+    async (_, context) => {
+      const client = aiService.getClient();
+      if (!client) {
+        throw new Error("AI service not available");
+      }
+      const response = await client.post(
+        "/exam/co-candidate/respond",
+        context
+      );
+      return response.data;
+    }
+  );
+  electron.ipcMain.handle(
+    "ai:generate-assessment",
+    async (_, request) => {
+      const client = aiService.getClient();
+      if (!client) {
+        throw new Error("AI service not available");
+      }
+      await database.updateSession(request.sessionId, {
+        status: "processing"
+      });
+      try {
+        const response = await client.post(
+          "/assessment/generate",
+          request,
+          {
+            timeout: 18e4
+            // 3 minutes for assessment
+          }
+        );
+        await database.saveAssessment(response.data);
+        await database.updateSession(request.sessionId, {
+          status: "completed",
+          estimatedLevel: response.data.estimatedOverallLevel
+        });
+        return response.data;
+      } catch (error) {
+        await database.updateSession(request.sessionId, {
+          status: "failed"
+        });
+        throw error;
+      }
+    }
+  );
+  electron.ipcMain.handle(
+    "ai:tts-generate",
+    async (_, request) => {
+      const client = aiService.getClient();
+      if (!client) {
+        throw new Error("AI service not available");
+      }
+      const response = await client.post("/tts/speak", request);
+      return response.data;
+    }
+  );
+  electron.ipcMain.handle(
+    "ai:generate-part2-images",
+    async (_, request) => {
+      const client = aiService.getClient();
+      if (!client) {
+        throw new Error("AI service not available");
+      }
+      const response = await client.post(
+        "/images/part2/generate",
+        request,
+        { timeout: 13e4 }
+      );
+      return response.data;
+    }
+  );
+  electron.ipcMain.handle(
+    "ai:get-part2-image-progress",
+    async () => {
+      const client = aiService.getClient();
+      if (!client) {
+        return {
+          available: false,
+          progress: 0,
+          etaSeconds: null,
+          stage: "AI service unavailable"
+        };
+      }
+      const response = await client.get(
+        "/images/part2/progress",
+        { timeout: 5e3 }
+      );
+      return response.data;
+    }
+  );
+  electron.ipcMain.handle(
+    "audio:get-file",
+    async (_, { filePath }) => {
+      const fs2 = await import("fs/promises");
+      const buffer = await fs2.readFile(filePath);
+      return new Uint8Array(buffer);
+    }
+  );
+  electron.ipcMain.handle("db:save-turn", async (_, turn) => {
+    await database.saveTurn(turn);
+  });
+  electron.ipcMain.handle(
+    "db:get-turns",
+    async (_, { sessionId }) => {
+      return await database.getTurns(sessionId);
+    }
+  );
+  electron.ipcMain.handle(
+    "db:get-assessment",
+    async (_, { sessionId }) => {
+      return await database.getAssessment(sessionId);
+    }
+  );
+  electron.ipcMain.handle(
+    "system:check-health",
+    async () => {
+      const aiHealthy = await aiService.checkHealth();
+      return {
+        healthy: aiHealthy,
+        details: {
+          aiService: aiHealthy,
+          aiServicePort: aiService.getPort(),
+          database: !!database.getDb()
+        }
+      };
+    }
+  );
+  electron.ipcMain.handle(
+    "system:check-ollama",
+    async () => {
+      const client = aiService.getClient();
+      if (!client) {
+        return checkOllamaDirectly();
+      }
+      try {
+        const response = await client.get("/system/ollama-status");
+        const data = response.data;
+        return {
+          installed: data.available || false,
+          running: data.available || false,
+          version: data.version,
+          models: data.models || []
+        };
+      } catch {
+        return checkOllamaDirectly();
+      }
+    }
+  );
+  electron.ipcMain.handle(
+    "models:list",
+    async (_, { type: type2 }) => {
+      const client = aiService.getClient();
+      if (!client) {
+        return [];
+      }
+      try {
+        const response = await client.get("/models", { params: { type: type2 } });
+        return response.data;
+      } catch {
+        return [];
+      }
+    }
+  );
+  electron.ipcMain.handle(
+    "models:test",
+    async (_, { type: type2, name }) => {
+      var _a, _b;
+      const client = aiService.getClient();
+      if (!client) {
+        return { success: false, message: "AI service not available" };
+      }
+      try {
+        const response = await client.post("/models/test", { type: type2, name });
+        return response.data;
+      } catch (error) {
+        return {
+          success: false,
+          message: ((_b = (_a = error.response) == null ? void 0 : _a.data) == null ? void 0 : _b.message) || error.message
+        };
+      }
+    }
+  );
+  console.log("[IPC] All handlers registered");
+}
 class AIServiceManager {
   constructor(userDataPath) {
     __publicField(this, "process", null);
@@ -19191,13 +19250,60 @@ class AIServiceManager {
     if (process.env.NODE_ENV === "development" || !electron.app.isPackaged) {
       const workspaceRoot = path$1.join(electron.app.getAppPath(), "../..");
       const venvPath = path$1.join(workspaceRoot, ".venv");
-      const pythonPath = process.platform === "win32" ? path$1.join(venvPath, "Scripts", "python.exe") : path$1.join(venvPath, "bin", "python");
-      return pythonPath;
+      const candidates = process.platform === "win32" ? [
+        path$1.join(venvPath, "Scripts", "python.exe"),
+        path$1.join(workspaceRoot, "local-ai", "python310", "python.exe"),
+        path$1.join(
+          electron.app.getPath("home"),
+          ".cache",
+          "codex-runtimes",
+          "codex-primary-runtime",
+          "dependencies",
+          "python",
+          "python.exe"
+        )
+      ] : [
+        path$1.join(venvPath, "bin", "python"),
+        "python3",
+        "python"
+      ];
+      for (const candidate of candidates) {
+        if (await this.canRunPython(candidate)) {
+          if (candidate !== candidates[0]) {
+            console.warn(`[AIService] Falling back to Python runtime: ${candidate}`);
+          }
+          return candidate;
+        }
+      }
+      return candidates[0];
     }
     if (process.platform === "win32") {
       return path$1.join(this.servicePath, "ai-service.exe");
     }
     return path$1.join(this.servicePath, "ai-service");
+  }
+  async canRunPython(candidate) {
+    if (candidate.includes(path$1.sep) && !fs__namespace.existsSync(candidate)) {
+      return false;
+    }
+    return await new Promise((resolve) => {
+      const probe = child_process.spawn(candidate, ["-c", "import fastapi, uvicorn, httpx, pydantic_settings"], {
+        stdio: ["ignore", "ignore", "ignore"],
+        windowsVerbatimArguments: process.env.NODE_ENV === "development"
+      });
+      const timeout = setTimeout(() => {
+        probe.kill();
+        resolve(false);
+      }, 3e3);
+      probe.once("error", () => {
+        clearTimeout(timeout);
+        resolve(false);
+      });
+      probe.once("exit", (code) => {
+        clearTimeout(timeout);
+        resolve(code === 0);
+      });
+    });
   }
 }
 class AudioManager {
@@ -19260,6 +19366,7 @@ class AudioManager {
     }
   }
 }
+const require$1 = module$1.createRequire(typeof document === "undefined" ? require("url").pathToFileURL(__filename).href : _documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === "SCRIPT" && _documentCurrentScript.src || new URL("index.js", document.baseURI).href);
 class DatabaseManager {
   constructor(userDataPath) {
     __publicField(this, "db", null);
@@ -19283,6 +19390,7 @@ class DatabaseManager {
       }
       console.log("[Database] Loading WASM from:", wasmPath);
       const wasmBinary = await fs__namespace$1.readFile(wasmPath);
+      const initSqlJs = this.loadSqlJs();
       const SQL = await initSqlJs({
         wasmBinary
       });
@@ -19788,6 +19896,12 @@ class DatabaseManager {
   getDb() {
     if (!this.db) throw new Error("Database not initialized");
     return this.db;
+  }
+  loadSqlJs() {
+    if (electron.app.isPackaged) {
+      return require$1(path$1.join(process.resourcesPath, "sql-wasm.js"));
+    }
+    return require$1("sql.js");
   }
 }
 process.env.DIST = path__namespace.join(__dirname, "../dist");

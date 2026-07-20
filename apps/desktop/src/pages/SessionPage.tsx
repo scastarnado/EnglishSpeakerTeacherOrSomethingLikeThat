@@ -1,4 +1,11 @@
-import type { CoCandidateResponse, InterlocutorResponse, Session, Turn } from '@shared/index';
+import type {
+  CoCandidateResponse,
+  GeneratedImageAsset,
+  InterlocutorResponse,
+  Part2ImageGenerationProgress,
+  Session,
+  Turn,
+} from '@shared/index';
 import {
   CheckCircle2,
   Clock,
@@ -50,6 +57,11 @@ type ExamStep = {
 type PartSummaryState = {
   part: 1 | 2 | 3 | 4;
   nextStepIndex: number | null;
+};
+
+type ImageGenerationState = Part2ImageGenerationProgress & {
+  active: boolean;
+  startedAt: number;
 };
 
 const PART1_STEPS: ExamStep[] = [
@@ -232,18 +244,22 @@ export default function SessionPage() {
   const [selectedImage, setSelectedImage] = useState<{ id: string; url: string; altText: string } | null>(null);
   const [statusMessage, setStatusMessage] = useState('Loading session...');
   const [partSummary, setPartSummary] = useState<PartSummaryState | null>(null);
+  const [part2ImageOverrides, setPart2ImageOverrides] = useState<Record<string, GeneratedImageAsset[]>>({});
+  const [imageGeneration, setImageGeneration] = useState<ImageGenerationState | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const isGettingPromptRef = useRef(false);
+  const part2ImageRequestsRef = useRef<Record<string, Promise<GeneratedImageAsset[]>>>({});
 
   const examPlan = useMemo(() => {
     if (!session) return PART1_STEPS;
     return buildExamPlan(session);
   }, [session]);
 
-  const currentStep = examPlan[Math.min(currentStepIndex, examPlan.length - 1)];
+  const rawCurrentStep = examPlan[Math.min(currentStepIndex, examPlan.length - 1)];
+  const currentStep = getStepWithGeneratedImages(rawCurrentStep);
   const currentPart = currentStep.part;
   const isTrainingMode =
     session?.mode === 'conversation' || session?.mode === 'intensive_correction';
@@ -293,6 +309,35 @@ export default function SessionPage() {
   }, [isRecording, recordingSeconds, hardStopSeconds]);
 
   useEffect(() => {
+    if (!imageGeneration?.active) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const progress = await window.electronAPI.ai.getPart2ImageProgress();
+        setImageGeneration((previous) => {
+          if (!previous?.active) return previous;
+          return {
+            ...previous,
+            ...progress,
+            progress: Math.max(previous.progress, progress.progress),
+          };
+        });
+      } catch {
+        setImageGeneration((previous) => {
+          if (!previous?.active) return previous;
+          return {
+            ...previous,
+            available: false,
+            stage: 'Waiting for local image model',
+          };
+        });
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [imageGeneration?.active]);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       if (event.code === 'Space') {
@@ -328,7 +373,7 @@ export default function SessionPage() {
         setStatusMessage('Starting session...');
         await window.electronAPI.session.start({ sessionId: sessionId! });
         const loadedPlan = buildExamPlan(loadedSession);
-        await playExaminerStep(loadedPlan[0], loadedSession, 0);
+        await prepareAndPlayExaminerStep(loadedPlan[0], loadedSession, 0);
       }
     } catch (error) {
       console.error('Failed to load session:', error);
@@ -427,6 +472,116 @@ export default function SessionPage() {
       setStatusMessage('Ready for your answer.');
       isGettingPromptRef.current = false;
     }
+  }
+
+  function getStepWithGeneratedImages(step: ExamStep): ExamStep {
+    if (step.part !== 2 || !step.task) return step;
+
+    const generatedImages = part2ImageOverrides[step.task.id];
+    if (!generatedImages?.length) return step;
+
+    return {
+      ...step,
+      task: {
+        ...step.task,
+        imageAssets: generatedImages,
+      },
+    };
+  }
+
+  async function preparePart2Images(step: ExamStep, sessionData: Session): Promise<ExamStep> {
+    if (step.part !== 2 || !step.task) return getStepWithGeneratedImages(step);
+
+    const existingOverride = part2ImageOverrides[step.task.id];
+    if (existingOverride?.length) return getStepWithGeneratedImages(step);
+
+    setIsProcessing(true);
+    setStatusMessage('Generating realistic Part 2 photos locally. This can take up to 2 minutes...');
+    setImageGeneration({
+      active: true,
+      available: false,
+      progress: 0,
+      etaSeconds: null,
+      currentImageIndex: null,
+      totalImages: 3,
+      stage: 'Starting local image model',
+      startedAt: Date.now(),
+    });
+    try {
+      const requestKey = `${sessionData.id}:${step.task.id}`;
+      if (!part2ImageRequestsRef.current[requestKey]) {
+        part2ImageRequestsRef.current[requestKey] = window.electronAPI.ai.generatePart2Images({
+          sessionId: sessionData.id,
+          taskId: step.task.id,
+          taskTitle: step.task.title,
+          instructions: step.task.instructions,
+          questions: step.task.questions,
+          topicTags: step.task.topicTags,
+          imageDescriptions: step.task.imageAssets?.map((image) => image.altText) ?? [],
+          count: 3,
+        }).then((response) => {
+          if (!response.images.length) {
+            throw new Error(response.fallbackReason || 'Could not generate Part 2 photos.');
+          }
+          return response.images;
+        }).finally(() => {
+          delete part2ImageRequestsRef.current[requestKey];
+        });
+      }
+
+      const images = await part2ImageRequestsRef.current[requestKey];
+
+      if (images.length > 0) {
+        setPart2ImageOverrides((previous) => ({
+          ...previous,
+          [step.task!.id]: images,
+        }));
+        notify({
+          type: 'success',
+          title: 'Part 2 photos ready',
+          message: `Using ${images.length} local family-safe AI image prompts.`,
+        });
+        setImageGeneration((previous) =>
+          previous
+            ? {
+                ...previous,
+                active: false,
+                available: true,
+                progress: 1,
+                etaSeconds: 0,
+                currentImageIndex: images.length,
+                totalImages: images.length,
+                stage: 'Images ready. Starting Part 2.',
+              }
+            : null,
+        );
+        return {
+          ...step,
+          task: {
+            ...step.task,
+            imageAssets: images,
+          },
+        };
+      }
+
+      return getStepWithGeneratedImages(step);
+    } catch (error: any) {
+      console.error('Failed to generate Part 2 images:', error);
+      notify({
+        type: 'error',
+        title: 'Using fallback images',
+        message: error?.message || 'Could not generate Part 2 photos.',
+      });
+      return getStepWithGeneratedImages(step);
+    } finally {
+      setIsProcessing(false);
+      setImageGeneration((previous) => (previous?.active ? null : previous));
+    }
+  }
+
+  async function prepareAndPlayExaminerStep(step: ExamStep, sessionData: Session, stepIndex: number) {
+    const preparedStep = await preparePart2Images(step, sessionData);
+    await playExaminerStep(preparedStep, sessionData, stepIndex);
   }
 
   async function playCoCandidateTurn(step: ExamStep) {
@@ -661,7 +816,7 @@ export default function SessionPage() {
       setStatusMessage('Continue the discussion with your partner.');
       return;
     }
-    await playExaminerStep(nextStep, session, nextIndex);
+    await prepareAndPlayExaminerStep(nextStep, session, nextIndex);
   }
 
   async function continueAfterPartSummary() {
@@ -680,7 +835,7 @@ export default function SessionPage() {
       setStatusMessage('Continue the discussion with your partner.');
       return;
     }
-    await playExaminerStep(nextStep, session, nextStepIndex);
+    await prepareAndPlayExaminerStep(nextStep, session, nextStepIndex);
   }
 
   async function finishSession() {
@@ -700,7 +855,7 @@ export default function SessionPage() {
   }
 
   function getPartSteps(part: 1 | 2 | 3 | 4) {
-    return examPlan.filter((step) => step.part === part);
+    return examPlan.filter((step) => step.part === part).map((step) => getStepWithGeneratedImages(step));
   }
 
   function getPrimaryTaskForPart(part: 1 | 2 | 3 | 4) {
@@ -843,6 +998,14 @@ export default function SessionPage() {
       return step.task.questions[0];
     }
     return 'Could you tell me a little about yourself?';
+  }
+
+  function formatRemainingTime(seconds: number | null | undefined) {
+    if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return 'Calculating...';
+    const rounded = Math.max(0, Math.round(seconds));
+    const minutes = Math.floor(rounded / 60);
+    const remainder = rounded % 60;
+    return minutes > 0 ? `${minutes}m ${remainder.toString().padStart(2, '0')}s` : `${remainder}s`;
   }
 
   if (!session) {
@@ -1024,6 +1187,50 @@ export default function SessionPage() {
             </div>
           )}
 
+          {currentStep.part === 2 && currentStep.task?.imageAssets && currentStep.task.imageAssets.length > 0 && (
+            <section className="mb-6 rounded-lg border border-border bg-card p-4">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Part 2 picture board</p>
+                  <h2 className="mt-1 text-lg font-semibold">Choose two photos and compare them</h2>
+                </div>
+                <p className="hidden max-w-xs text-right text-xs text-muted-foreground sm:block">
+                  Keep all three visible while speaking. In the exam, talk about two only.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                {currentStep.task.imageAssets.map((image) => (
+                  <button
+                    key={image.id}
+                    type="button"
+                    onClick={() => !isExamMode && setSelectedImage(image)}
+                    className={`overflow-hidden rounded-lg border border-border bg-background text-left ${
+                      isExamMode ? 'cursor-default' : 'transition-colors hover:border-primary'
+                    }`}
+                  >
+                    <div className="relative aspect-[4/3]">
+                      <img
+                        src={image.url}
+                        alt={image.altText}
+                        decoding="async"
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute left-3 top-3 rounded bg-background/95 px-3 py-1 text-sm font-bold shadow-sm">
+                        Picture {image.id}
+                      </span>
+                      {!isExamMode && (
+                        <span className="absolute bottom-3 right-3 rounded bg-background/95 p-2 shadow-sm">
+                          <Expand className="h-4 w-4" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="min-h-16 p-3 text-sm text-muted-foreground">{image.altText}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {isExamMode ? (
             <div className="rounded-lg border border-border bg-card p-6 text-center">
               <p className="font-semibold">Exam in progress</p>
@@ -1133,6 +1340,75 @@ export default function SessionPage() {
           )}
         </div>
       </div>
+      {imageGeneration?.active && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6">
+          <div className="w-full max-w-lg rounded-lg bg-card p-6 shadow-xl">
+            <div className="mb-5 flex items-start gap-4">
+              <div className="rounded-md bg-primary/10 p-3 text-primary">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-primary">Preparing Part 2 photos</p>
+                <h2 className="mt-1 text-xl font-bold">Generating realistic exam photos locally</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  The speaking test will start automatically when the photos are ready. This can take up to 2 minutes.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="font-medium">
+                    {imageGeneration.currentImageIndex && imageGeneration.totalImages
+                      ? `Photo ${imageGeneration.currentImageIndex} of ${imageGeneration.totalImages}`
+                      : imageGeneration.stage}
+                  </span>
+                  <span className="text-muted-foreground">{Math.round(imageGeneration.progress * 100)}%</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.max(4, Math.round(imageGeneration.progress * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-md border border-border bg-background p-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Status</p>
+                  <p className="mt-1">{imageGeneration.stage}</p>
+                </div>
+                <div className="rounded-md border border-border bg-background p-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Time remaining</p>
+                  <p className="mt-1">{formatRemainingTime(imageGeneration.etaSeconds)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3].map((imageNumber) => {
+                  const isDone = (imageGeneration.currentImageIndex ?? 0) > imageNumber;
+                  const isActive = imageGeneration.currentImageIndex === imageNumber;
+                  return (
+                    <div
+                      key={imageNumber}
+                      className={`rounded-md border px-3 py-2 text-center text-xs font-semibold ${
+                        isDone
+                          ? 'border-success bg-success/10 text-success'
+                          : isActive
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-background text-muted-foreground'
+                      }`}
+                    >
+                      {isDone ? 'Ready' : isActive ? 'Rendering' : 'Queued'} {String.fromCharCode(64 + imageNumber)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {partSummary && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6">
           <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-card shadow-xl">

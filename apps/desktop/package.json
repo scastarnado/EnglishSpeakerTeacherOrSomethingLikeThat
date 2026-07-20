@@ -1,6 +1,6 @@
 {
   "name": "@c1sc/desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "C1 Speaking Coach desktop application",
   "author": "C1 Speaking Coach",
   "main": "dist-electron/index.js",
@@ -76,6 +76,14 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../../node_modules/sql.js/dist/sql-wasm.js",
+        "to": "sql-wasm.js"
+      },
+      {
+        "from": "../../node_modules/sql.js/dist/sql-wasm.wasm",
+        "to": "sql-wasm.wasm"
       }
     ],
     "win": {

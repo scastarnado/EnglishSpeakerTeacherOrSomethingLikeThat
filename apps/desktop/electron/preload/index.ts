@@ -48,6 +48,11 @@ const api = {
 		) => ipcRenderer.invoke('ai:generate-assessment', request),
 		ttsGenerate: (request: IPCChannels['ai:tts-generate']['request']) =>
 			ipcRenderer.invoke('ai:tts-generate', request),
+		generatePart2Images: (
+			request: IPCChannels['ai:generate-part2-images']['request'],
+		) => ipcRenderer.invoke('ai:generate-part2-images', request),
+		getPart2ImageProgress: () =>
+			ipcRenderer.invoke('ai:get-part2-image-progress'),
 	},
 
 	// Database operations

@@ -245,11 +245,37 @@ export class AIServiceManager {
 			// Get workspace root: apps/desktop/dist-electron -> apps/desktop -> apps -> workspace
 			const workspaceRoot = path.join(app.getAppPath(), '../..');
 			const venvPath = path.join(workspaceRoot, '.venv');
-			const pythonPath =
+			const candidates =
 				process.platform === 'win32' ?
-					path.join(venvPath, 'Scripts', 'python.exe')
-				:	path.join(venvPath, 'bin', 'python');
-			return pythonPath;
+					[
+						path.join(venvPath, 'Scripts', 'python.exe'),
+						path.join(workspaceRoot, 'local-ai', 'python310', 'python.exe'),
+						path.join(
+							app.getPath('home'),
+							'.cache',
+							'codex-runtimes',
+							'codex-primary-runtime',
+							'dependencies',
+							'python',
+							'python.exe',
+						),
+					]
+				:	[
+						path.join(venvPath, 'bin', 'python'),
+						'python3',
+						'python',
+					];
+
+			for (const candidate of candidates) {
+				if (await this.canRunPython(candidate)) {
+					if (candidate !== candidates[0]) {
+						console.warn(`[AIService] Falling back to Python runtime: ${candidate}`);
+					}
+					return candidate;
+				}
+			}
+
+			return candidates[0];
 		}
 
 		// In production, use the bundled PyInstaller service executable
@@ -258,5 +284,33 @@ export class AIServiceManager {
 		}
 
 		return path.join(this.servicePath, 'ai-service');
+	}
+
+	private async canRunPython(candidate: string): Promise<boolean> {
+		if (candidate.includes(path.sep) && !fs.existsSync(candidate)) {
+			return false;
+		}
+
+		return await new Promise<boolean>((resolve) => {
+			const probe = spawn(candidate, ['-c', 'import fastapi, uvicorn, httpx, pydantic_settings'], {
+				stdio: ['ignore', 'ignore', 'ignore'],
+				windowsVerbatimArguments: process.env.NODE_ENV === 'development',
+			});
+
+			const timeout = setTimeout(() => {
+				probe.kill();
+				resolve(false);
+			}, 3000);
+
+			probe.once('error', () => {
+				clearTimeout(timeout);
+				resolve(false);
+			});
+
+			probe.once('exit', (code) => {
+				clearTimeout(timeout);
+				resolve(code === 0);
+			});
+		});
 	}
 }
