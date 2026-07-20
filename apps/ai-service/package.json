@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "start": "python -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
-    "package:win": "pyinstaller ai-service.spec --noconfirm --clean",
+    "package:win": "python -m PyInstaller ai-service.spec --noconfirm --clean",
     "test": "pytest",
     "lint": "ruff check app",
     "format": "black app"
