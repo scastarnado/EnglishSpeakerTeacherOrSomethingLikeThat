@@ -9,6 +9,7 @@ export type AppPreferences = {
   reduceMotion: boolean;
   autoReplayPrompts: boolean;
   showPracticeTips: boolean;
+  enableLocalImageGeneration: boolean;
   llmModel: string;
   imageModel: string;
   whisperModel: string;
@@ -23,6 +24,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   reduceMotion: false,
   autoReplayPrompts: false,
   showPracticeTips: true,
+  enableLocalImageGeneration: false,
   llmModel: 'qwen2.5:7b-instruct',
   imageModel: '',
   whisperModel: 'small.en',

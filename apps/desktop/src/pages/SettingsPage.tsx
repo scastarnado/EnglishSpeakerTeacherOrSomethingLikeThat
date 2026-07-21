@@ -298,6 +298,20 @@ export default function SettingsPage() {
 
           {/* Image Model */}
           <div className="p-4 rounded-lg border border-border bg-card">
+            <label className="mb-4 flex items-center justify-between gap-4">
+              <span>
+                <span className="block font-semibold">Generate Part 2 Images Locally</span>
+                <span className="text-sm text-muted-foreground">
+                  Off uses the built-in practice images immediately.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={preferences.enableLocalImageGeneration}
+                onChange={(event) => updatePreferences({ enableLocalImageGeneration: event.target.checked })}
+                className="h-5 w-5 accent-primary"
+              />
+            </label>
             <div className="mb-2 flex items-center justify-between gap-3">
               <label className="flex items-center gap-2 font-semibold">
                 <Image className="h-4 w-4 text-primary" />
@@ -316,7 +330,7 @@ export default function SettingsPage() {
               value={preferences.imageModel}
               onChange={(e) => updatePreferences({ imageModel: e.target.value })}
               className="w-full px-3 py-2 border border-border rounded-md bg-background"
-              disabled={isCheckingImageModels || imageModelOptions.length === 0}
+              disabled={!preferences.enableLocalImageGeneration || isCheckingImageModels || imageModelOptions.length === 0}
             >
               {imageModelOptions.length ? (
                 imageModelOptions.map((model) => (
@@ -329,7 +343,7 @@ export default function SettingsPage() {
               )}
             </select>
             <p className="mt-2 text-sm text-muted-foreground">
-              Optional. Start a Stable Diffusion-compatible local server with API enabled to generate new Part 2 images; otherwise the app uses built-in practice images.
+              Optional. Requires a Stable Diffusion-compatible local server with API enabled; otherwise keep this off for built-in Part 2 images.
             </p>
           </div>
 

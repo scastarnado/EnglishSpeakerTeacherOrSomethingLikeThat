@@ -491,6 +491,9 @@ export default function SessionPage() {
 
   async function preparePart2Images(step: ExamStep, sessionData: Session): Promise<ExamStep> {
     if (step.part !== 2 || !step.task) return getStepWithGeneratedImages(step);
+    if (!preferences.enableLocalImageGeneration || !preferences.imageModel) {
+      return getStepWithGeneratedImages(step);
+    }
 
     const existingOverride = part2ImageOverrides[step.task.id];
     if (existingOverride?.length) return getStepWithGeneratedImages(step);
@@ -568,11 +571,6 @@ export default function SessionPage() {
       return getStepWithGeneratedImages(step);
     } catch (error: any) {
       console.error('Failed to generate Part 2 images:', error);
-      notify({
-        type: 'info',
-        title: 'Using fallback images',
-        message: 'No local image generator is available, so Part 2 will use the built-in practice images.',
-      });
       return getStepWithGeneratedImages(step);
     } finally {
       setIsProcessing(false);
