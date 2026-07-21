@@ -44,10 +44,8 @@ class Settings(BaseSettings):
     LOCAL_IMAGE_STEPS: int = int(os.getenv("LOCAL_IMAGE_STEPS", "14"))
     LOCAL_IMAGE_CFG_SCALE: float = float(os.getenv("LOCAL_IMAGE_CFG_SCALE", "5.5"))
     LOCAL_IMAGE_SAMPLER: str = os.getenv("LOCAL_IMAGE_SAMPLER", "Euler a")
-    LOCAL_IMAGE_CHECKPOINT: Optional[str] = os.getenv(
-        "LOCAL_IMAGE_CHECKPOINT", "Realistic_Vision_V6.0_NV_B1_fp16.safetensors"
-    )
-    LOCAL_IMAGE_AUTOSTART: bool = os.getenv("LOCAL_IMAGE_AUTOSTART", "true").lower() not in ("0", "false", "no")
+    LOCAL_IMAGE_CHECKPOINT: Optional[str] = os.getenv("LOCAL_IMAGE_CHECKPOINT")
+    LOCAL_IMAGE_AUTOSTART: bool = os.getenv("LOCAL_IMAGE_AUTOSTART", "false").lower() not in ("0", "false", "no")
     LOCAL_IMAGE_WEBUI_PATH: Optional[str] = os.getenv("LOCAL_IMAGE_WEBUI_PATH")
     LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS: int = int(os.getenv("LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS", "120"))
 

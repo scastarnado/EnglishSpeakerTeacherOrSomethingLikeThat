@@ -245,6 +245,17 @@ def _webui_script_path() -> Path:
     return _default_webui_script_path()
 
 
+def _local_image_unavailable_message() -> str:
+    return (
+        "Local image generation is optional and no Stable Diffusion-compatible "
+        "server is running at "
+        f"{settings.STABLE_DIFFUSION_API_URL}. The app will use the built-in "
+        "Part 2 practice images. To enable generated images, start Stable "
+        "Diffusion WebUI/SD.Next with API enabled, or set LOCAL_IMAGE_WEBUI_PATH "
+        "and LOCAL_IMAGE_AUTOSTART=true."
+    )
+
+
 async def _is_local_provider_ready() -> bool:
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -266,8 +277,7 @@ async def list_local_image_models():
             response.raise_for_status()
             data = response.json()
     except Exception:
-        models = [settings.LOCAL_IMAGE_CHECKPOINT] if settings.LOCAL_IMAGE_CHECKPOINT else []
-        return {"models": models}
+        return {"models": []}
 
     models = []
     for model in data:
@@ -286,11 +296,11 @@ async def _ensure_local_provider_ready(timeout_seconds: float | None = None) -> 
         return
 
     if not settings.LOCAL_IMAGE_AUTOSTART:
-        raise RuntimeError("Local image provider is not running and autostart is disabled")
+        raise RuntimeError(_local_image_unavailable_message())
 
     script_path = _webui_script_path()
     if not script_path.exists():
-        raise RuntimeError(f"Local image provider launcher was not found at {script_path}")
+        raise RuntimeError(_local_image_unavailable_message())
 
     log_path = script_path.parent / "webui-autostart.log"
     err_path = script_path.parent / "webui-autostart.err.log"
@@ -848,7 +858,7 @@ async def _generate_part2_images_uncached(
             images=[],
             fromCache=False,
             provider=settings.LOCAL_IMAGE_PROVIDER,
-            fallbackReason=f"Local Part 2 image generation stopped after the {total_timeout}s limit. Details: {exc}",
+            fallbackReason=f"Local Part 2 image generation stopped after the {total_timeout}s limit. The app will use the built-in Part 2 images. Details: {exc}",
         )
     except Exception as exc:
         return Part2ImageGenerationResponse(
@@ -856,8 +866,7 @@ async def _generate_part2_images_uncached(
             fromCache=False,
             provider=settings.LOCAL_IMAGE_PROVIDER,
             fallbackReason=(
-                "Local Part 2 image generation is unavailable. Start a local Stable Diffusion WebUI/SD.Next "
-                f"server with API enabled at {settings.STABLE_DIFFUSION_API_URL}, then try again. Details: {exc}"
+                f"{_local_image_unavailable_message()} Details: {exc}"
             ),
         )
     finally:

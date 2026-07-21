@@ -496,7 +496,7 @@ export default function SessionPage() {
     if (existingOverride?.length) return getStepWithGeneratedImages(step);
 
     setIsProcessing(true);
-    setStatusMessage('Generating realistic Part 2 photos locally. This can take up to 2 minutes...');
+    setStatusMessage('Checking for a local image generator...');
     setImageGeneration({
       active: true,
       available: false,
@@ -504,7 +504,7 @@ export default function SessionPage() {
       etaSeconds: null,
       currentImageIndex: null,
       totalImages: 3,
-      stage: 'Starting local image model',
+      stage: 'Checking local image generator',
       startedAt: Date.now(),
     });
     try {
@@ -569,9 +569,9 @@ export default function SessionPage() {
     } catch (error: any) {
       console.error('Failed to generate Part 2 images:', error);
       notify({
-        type: 'error',
+        type: 'info',
         title: 'Using fallback images',
-        message: error?.message || 'Could not generate Part 2 photos.',
+        message: 'No local image generator is available, so Part 2 will use the built-in practice images.',
       });
       return getStepWithGeneratedImages(step);
     } finally {

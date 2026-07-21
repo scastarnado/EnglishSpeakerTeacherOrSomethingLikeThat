@@ -325,11 +325,11 @@ export default function SettingsPage() {
                   </option>
                 ))
               ) : (
-                <option value="">No local image models found</option>
+                <option value="">Built-in Part 2 images</option>
               )}
             </select>
             <p className="mt-2 text-sm text-muted-foreground">
-              Used for locally generated Part 2 images. Start your Stable Diffusion-compatible local server to list checkpoints.
+              Optional. Start a Stable Diffusion-compatible local server with API enabled to generate new Part 2 images; otherwise the app uses built-in practice images.
             </p>
           </div>
 
