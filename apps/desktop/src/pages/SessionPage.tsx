@@ -518,6 +518,7 @@ export default function SessionPage() {
           questions: step.task.questions,
           topicTags: step.task.topicTags,
           imageDescriptions: step.task.imageAssets?.map((image) => image.altText) ?? [],
+          imageModel: preferences.imageModel || undefined,
           count: 3,
         }).then((response) => {
           if (!response.images.length) {

@@ -3,7 +3,7 @@ name: Build Windows EXE and Release
 on:
   push:
     branches:
-      - main
+      - "**"
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-and-release:
-    name: Build installer and publish release
+    name: Build executable and publish commit release
     runs-on: windows-2022
 
     steps:
@@ -69,6 +69,7 @@ jobs:
         id: installer
         shell: pwsh
         run: |
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
           $installer = Get-ChildItem -Path "apps/desktop/release" -Recurse -Filter "*.exe" |
             Where-Object { $_.Name -like "*Setup*.exe" } |
             Sort-Object LastWriteTime -Descending |
@@ -78,22 +79,35 @@ jobs:
             throw "Could not find the generated Windows installer."
           }
 
+          $unpacked = Join-Path $installer.DirectoryName "win-unpacked"
+          if (-not (Test-Path $unpacked)) {
+            throw "Could not find the generated win-unpacked executable folder."
+          }
+
+          $zip = Join-Path $installer.DirectoryName "C1-Speaking-Coach-win-unpacked-$shortSha.zip"
+          if (Test-Path $zip) {
+            Remove-Item -LiteralPath $zip -Force
+          }
+          Compress-Archive -Path (Join-Path $unpacked "*") -DestinationPath $zip -Force
+
           $blockmap = Get-ChildItem -Path $installer.DirectoryName -Filter "$($installer.Name).blockmap" -ErrorAction SilentlyContinue |
             Select-Object -First 1
 
           "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
           "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+          "unpacked_zip=$zip" >> $env:GITHUB_OUTPUT
           if ($blockmap) {
             "blockmap=$($blockmap.FullName)" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Upload installer artifact
+      - name: Upload Windows build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
+          name: windows-build-${{ github.sha }}
           path: |
             ${{ steps.installer.outputs.installer }}
             ${{ steps.installer.outputs.blockmap }}
+            ${{ steps.installer.outputs.unpacked_zip }}
           if-no-files-found: error
 
       - name: Build release metadata
@@ -101,9 +115,21 @@ jobs:
         shell: pwsh
         run: |
           $shortSha = "${{ github.sha }}".Substring(0, 7)
-          $tag = "auto-win-${{ github.run_number }}-$shortSha"
+          $branch = "${{ github.ref_name }}" -replace "[^A-Za-z0-9._-]", "-"
+          $tag = "auto-win-$branch-$shortSha"
           "tag=$tag" >> $env:GITHUB_OUTPUT
-          "name=Windows build $tag" >> $env:GITHUB_OUTPUT
+          "name=Windows executable $shortSha" >> $env:GITHUB_OUTPUT
+          @"
+          Automated Windows build for commit ${{ github.sha }}.
+
+          Branch: ${{ github.ref_name }}
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Assets:
+          - Windows installer (.exe)
+          - Installer blockmap
+          - Ready-to-run win-unpacked zip
+          "@ | Out-File -FilePath release-notes.md -Encoding utf8
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -111,10 +137,11 @@ jobs:
           tag_name: ${{ steps.release_meta.outputs.tag }}
           name: ${{ steps.release_meta.outputs.name }}
           target_commitish: ${{ github.sha }}
-          generate_release_notes: true
-          make_latest: true
+          body_path: release-notes.md
+          make_latest: ${{ github.ref_name == 'main' }}
           files: |
             ${{ steps.installer.outputs.installer }}
             ${{ steps.installer.outputs.blockmap }}
+            ${{ steps.installer.outputs.unpacked_zip }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

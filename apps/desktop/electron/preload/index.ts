@@ -53,6 +53,8 @@ const api = {
 		) => ipcRenderer.invoke('ai:generate-part2-images', request),
 		getPart2ImageProgress: () =>
 			ipcRenderer.invoke('ai:get-part2-image-progress'),
+		listImageModels: () =>
+			ipcRenderer.invoke('ai:list-image-models'),
 	},
 
 	// Database operations

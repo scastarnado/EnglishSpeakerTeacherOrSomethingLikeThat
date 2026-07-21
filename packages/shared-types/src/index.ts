@@ -456,6 +456,7 @@ export const Part2ImageGenerationRequestSchema = z.object({
 	questions: z.array(z.string()),
 	topicTags: z.array(z.string()),
 	imageDescriptions: z.array(z.string()).optional(),
+	imageModel: z.string().optional(),
 	count: z.number().min(1).max(3).default(3),
 });
 
@@ -702,6 +703,10 @@ export type IPCChannels = {
 	'ai:get-part2-image-progress': {
 		request: void;
 		response: Part2ImageGenerationProgress;
+	};
+	'ai:list-image-models': {
+		request: void;
+		response: string[];
 	};
 
 	// Database

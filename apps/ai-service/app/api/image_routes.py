@@ -64,6 +64,7 @@ class Part2ImageGenerationRequest(BaseModel):
     questions: list[str]
     topicTags: list[str]
     imageDescriptions: list[str] = Field(default_factory=list)
+    imageModel: str | None = None
     count: int = Field(default=3, ge=1, le=3)
 
 
@@ -114,7 +115,7 @@ def _cache_key(request: Part2ImageGenerationRequest) -> str:
         "steps": settings.LOCAL_IMAGE_STEPS,
         "cfg": settings.LOCAL_IMAGE_CFG_SCALE,
         "sampler": settings.LOCAL_IMAGE_SAMPLER,
-        "checkpoint": settings.LOCAL_IMAGE_CHECKPOINT,
+        "checkpoint": request.imageModel or settings.LOCAL_IMAGE_CHECKPOINT,
         "safety_version": 6,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
@@ -251,6 +252,33 @@ async def _is_local_provider_ready() -> bool:
             return response.status_code == 200
     except Exception:
         return False
+
+
+@router.get(
+    "/models",
+    dependencies=[Depends(verify_auth_token)],
+)
+async def list_local_image_models():
+    """List local image checkpoints exposed by the Stable Diffusion-compatible provider."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(f"{settings.STABLE_DIFFUSION_API_URL.rstrip('/')}/sdapi/v1/sd-models")
+            response.raise_for_status()
+            data = response.json()
+    except Exception:
+        models = [settings.LOCAL_IMAGE_CHECKPOINT] if settings.LOCAL_IMAGE_CHECKPOINT else []
+        return {"models": models}
+
+    models = []
+    for model in data:
+        title = model.get("title") or model.get("model_name") or model.get("name")
+        if title:
+            models.append(str(title))
+
+    if settings.LOCAL_IMAGE_CHECKPOINT and settings.LOCAL_IMAGE_CHECKPOINT not in models:
+        models.insert(0, settings.LOCAL_IMAGE_CHECKPOINT)
+
+    return {"models": sorted(set(models), key=models.index)}
 
 
 async def _ensure_local_provider_ready(timeout_seconds: float | None = None) -> None:
@@ -579,7 +607,12 @@ def _dark_footer_score(width: int, height: int, pixels: list[tuple[int, int, int
     return dark_pixels / total if total else 0
 
 
-async def _generate_local_stable_diffusion_image(prompt: str, timeout_seconds: float, variation: str = "") -> str:
+async def _generate_local_stable_diffusion_image(
+    prompt: str,
+    timeout_seconds: float,
+    variation: str = "",
+    image_model: str | None = None,
+) -> str:
     api_url = settings.STABLE_DIFFUSION_API_URL.rstrip("/")
 
     async with httpx.AsyncClient(timeout=max(1, timeout_seconds)) as client:
@@ -598,8 +631,9 @@ async def _generate_local_stable_diffusion_image(prompt: str, timeout_seconds: f
             "seed": -1,
             "subseed": -1,
         }
-        if settings.LOCAL_IMAGE_CHECKPOINT:
-            payload["override_settings"] = {"sd_model_checkpoint": settings.LOCAL_IMAGE_CHECKPOINT}
+        selected_checkpoint = image_model or settings.LOCAL_IMAGE_CHECKPOINT
+        if selected_checkpoint:
+            payload["override_settings"] = {"sd_model_checkpoint": selected_checkpoint}
             payload["override_settings_restore_afterwards"] = False
 
         try:
@@ -766,7 +800,12 @@ async def _generate_part2_images_uncached(
                     else f"Regenerating photo {image_id} after safety rejection"
                 )
                 per_image_timeout = max(1, min(remaining_total, remaining_total / max(remaining_images, 1) + 8))
-                candidate_b64 = await _generate_local_stable_diffusion_image(prompt, per_image_timeout, variation)
+                candidate_b64 = await _generate_local_stable_diffusion_image(
+                    prompt,
+                    per_image_timeout,
+                    variation,
+                    request.imageModel,
+                )
                 is_safe, rejection_reason = _passes_child_safe_visual_gate(candidate_b64)
                 if is_safe:
                     b64_png = candidate_b64

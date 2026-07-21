@@ -317,6 +317,20 @@ export function registerIPCHandlers(services: Services): void {
 		},
 	);
 
+	ipcMain.handle('ai:list-image-models', async (): Promise<string[]> => {
+		const client = aiService.getClient();
+		if (!client) {
+			return [];
+		}
+
+		const response = await client.get<{ models: string[] }>(
+			'/images/models',
+			{ timeout: 5000 },
+		);
+
+		return response.data.models;
+	});
+
 	ipcMain.handle(
 		'audio:get-file',
 		async (_, { filePath }: { filePath: string }): Promise<Uint8Array> => {

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Check, X, Loader2, Download, AlertCircle, ExternalLink, RotateCcw, Palette } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, X, Loader2, Download, AlertCircle, ExternalLink, RotateCcw, Palette, Image } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
 import { usePreferences, type AppDensity, type AppTheme } from '../lib/preferences';
 
@@ -15,10 +15,23 @@ export default function SettingsPage() {
   const { preferences, updatePreferences, resetPreferences } = usePreferences();
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [isChecking, setIsChecking] = useState(true);
+  const [imageModels, setImageModels] = useState<string[]>([]);
+  const [isCheckingImageModels, setIsCheckingImageModels] = useState(false);
 
   useEffect(() => {
     checkOllamaStatus();
+    loadImageModels();
   }, []);
+
+  const languageModelOptions = useMemo(
+    () => withSavedOption(ollamaStatus?.models ?? [], preferences.llmModel),
+    [ollamaStatus?.models, preferences.llmModel],
+  );
+
+  const imageModelOptions = useMemo(
+    () => withSavedOption(imageModels, preferences.imageModel),
+    [imageModels, preferences.imageModel],
+  );
 
   async function checkOllamaStatus() {
     setIsChecking(true);
@@ -47,6 +60,22 @@ export default function SettingsPage() {
     window.open('https://ollama.ai/download', '_blank');
   }
 
+  async function loadImageModels() {
+    setIsCheckingImageModels(true);
+    try {
+      const models = await window.electronAPI.ai.listImageModels();
+      setImageModels(models);
+      if (models.length && !preferences.imageModel) {
+        updatePreferences({ imageModel: models[0] });
+      }
+    } catch (error) {
+      console.error('Failed to list image models:', error);
+      setImageModels([]);
+    } finally {
+      setIsCheckingImageModels(false);
+    }
+  }
+
   function handleResetPreferences() {
     resetPreferences();
     notify({
@@ -54,6 +83,14 @@ export default function SettingsPage() {
       title: 'Preferences reset',
       message: 'Personalization and model defaults were restored.',
     });
+  }
+
+  function withSavedOption(models: string[], savedModel: string) {
+    const uniqueModels = Array.from(new Set(models.filter(Boolean)));
+    if (savedModel && !uniqueModels.includes(savedModel)) {
+      return [savedModel, ...uniqueModels];
+    }
+    return uniqueModels;
   }
 
   return (
@@ -242,15 +279,57 @@ export default function SettingsPage() {
               value={preferences.llmModel}
               onChange={(e) => updatePreferences({ llmModel: e.target.value })}
               className="w-full px-3 py-2 border border-border rounded-md bg-background"
-              disabled={!ollamaStatus?.running}
+              disabled={!ollamaStatus?.running || languageModelOptions.length === 0}
             >
-              <option value="qwen2.5:7b-instruct">Qwen 2.5 7B Instruct (Recommended)</option>
-              <option value="llama3.1:8b-instruct">Llama 3.1 8B Instruct</option>
-              <option value="mistral:7b-instruct">Mistral 7B Instruct</option>
+              {languageModelOptions.length ? (
+                languageModelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))
+              ) : (
+                <option value="">No local Ollama models found</option>
+              )}
             </select>
             <p className="mt-2 text-sm text-muted-foreground">
-              Used for examiner and co-candidate AI. Larger models provide better
-              conversation quality.
+              Used for examiner and co-candidate AI. This list comes from locally installed Ollama models.
+            </p>
+          </div>
+
+          {/* Image Model */}
+          <div className="p-4 rounded-lg border border-border bg-card">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label className="flex items-center gap-2 font-semibold">
+                <Image className="h-4 w-4 text-primary" />
+                Image Creation Model
+              </label>
+              <button
+                type="button"
+                onClick={loadImageModels}
+                disabled={isCheckingImageModels}
+                className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCheckingImageModels ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+            <select
+              value={preferences.imageModel}
+              onChange={(e) => updatePreferences({ imageModel: e.target.value })}
+              className="w-full px-3 py-2 border border-border rounded-md bg-background"
+              disabled={isCheckingImageModels || imageModelOptions.length === 0}
+            >
+              {imageModelOptions.length ? (
+                imageModelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))
+              ) : (
+                <option value="">No local image models found</option>
+              )}
+            </select>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Used for locally generated Part 2 images. Start your Stable Diffusion-compatible local server to list checkpoints.
             </p>
           </div>
 

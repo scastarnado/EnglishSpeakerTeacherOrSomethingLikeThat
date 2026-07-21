@@ -10,6 +10,7 @@ export type AppPreferences = {
   autoReplayPrompts: boolean;
   showPracticeTips: boolean;
   llmModel: string;
+  imageModel: string;
   whisperModel: string;
   ttsVoice: string;
 };
@@ -23,6 +24,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   autoReplayPrompts: false,
   showPracticeTips: true,
   llmModel: 'qwen2.5:7b-instruct',
+  imageModel: '',
   whisperModel: 'small.en',
   ttsVoice: 'british_male',
 };
