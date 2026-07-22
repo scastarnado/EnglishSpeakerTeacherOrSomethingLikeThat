@@ -160,6 +160,10 @@ When the installer finishes, Windows should place a shortcut named **C1 Speaking
 
 After the first setup, you do not need the internet to use the app, as long as Ollama and the model are already installed.
 
+#### Automatic App Updates
+
+The installed app checks GitHub for a newer release shortly after startup and every four hours while it is open. When an update has downloaded, choose **Restart and update**. The new version is installed in place, so you do not need to uninstall the old version, and data stored in `%APPDATA%/c1-speaking-coach/` is preserved.
+
 ### Option B: Install From Source Code and Build the Desktop App
 
 Use this path if you downloaded the source code from GitHub or want to build your own installer.

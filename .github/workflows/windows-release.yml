@@ -51,6 +51,10 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Set release version
+        shell: pwsh
+        run: npm version "1.0.${{ github.run_number }}" --workspace=@c1sc/desktop --no-git-tag-version
+
       - name: Type-check desktop app
         run: npm run type-check --workspace=@c1sc/desktop
 
@@ -93,12 +97,20 @@ jobs:
           $blockmap = Get-ChildItem -Path $installer.DirectoryName -Filter "$($installer.Name).blockmap" -ErrorAction SilentlyContinue |
             Select-Object -First 1
 
+          $updateMetadata = Get-ChildItem -Path $installer.DirectoryName -Filter "latest*.yml" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          if (-not $updateMetadata) {
+            throw "Could not find the auto-update metadata (latest.yml)."
+          }
+
           "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
           "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
           "unpacked_zip=$zip" >> $env:GITHUB_OUTPUT
           if ($blockmap) {
             "blockmap=$($blockmap.FullName)" >> $env:GITHUB_OUTPUT
           }
+          "update_metadata=$($updateMetadata.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Upload Windows build artifact
         uses: actions/upload-artifact@v4
@@ -107,6 +119,7 @@ jobs:
           path: |
             ${{ steps.installer.outputs.installer }}
             ${{ steps.installer.outputs.blockmap }}
+            ${{ steps.installer.outputs.update_metadata }}
             ${{ steps.installer.outputs.unpacked_zip }}
           if-no-files-found: error
 
@@ -142,6 +155,7 @@ jobs:
           files: |
             ${{ steps.installer.outputs.installer }}
             ${{ steps.installer.outputs.blockmap }}
+            ${{ steps.installer.outputs.update_metadata }}
             ${{ steps.installer.outputs.unpacked_zip }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

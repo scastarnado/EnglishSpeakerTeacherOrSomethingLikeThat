@@ -33,6 +33,7 @@
     "better-sqlite3": "^12.11.1",
     "clsx": "^2.0.0",
     "date-fns": "^3.0.0",
+    "electron-updater": "^6.8.9",
     "framer-motion": "^10.16.16",
     "lucide-react": "^1.24.0",
     "react": "^18.2.0",
@@ -62,6 +63,11 @@
     "appId": "com.c1speakingcoach.app",
     "productName": "C1 Speaking Coach",
     "electronVersion": "28.3.3",
+    "publish": {
+      "provider": "github",
+      "owner": "scastarnado",
+      "repo": "EnglishSpeakerTeacherOrSomethingLikeThat"
+    },
     "directories": {
       "output": "release/${version}"
     },

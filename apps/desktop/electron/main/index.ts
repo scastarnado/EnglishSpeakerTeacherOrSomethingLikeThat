@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, dialog, Menu, type MessageBoxOptions } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { registerIPCHandlers } from './ipc/handlers';
 import { AIServiceManager } from './services/ai-service-manager';
@@ -13,6 +14,7 @@ let mainWindow: BrowserWindow | null;
 let aiServiceManager: AIServiceManager;
 let databaseManager: DatabaseManager;
 let audioManager: AudioManager;
+let isQuitting = false;
 
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
@@ -148,6 +150,53 @@ async function shutdownServices() {
 	console.log('[Main] Services shut down');
 }
 
+function initializeAutoUpdater() {
+	if (!app.isPackaged) {
+		return;
+	}
+
+	autoUpdater.autoDownload = true;
+	autoUpdater.autoInstallOnAppQuit = true;
+
+	autoUpdater.on('update-available', (info) => {
+		console.log(`[Updater] Downloading version ${info.version}...`);
+	});
+
+	autoUpdater.on('update-downloaded', async (info) => {
+		const options: MessageBoxOptions = {
+			type: 'info',
+			title: 'Update ready',
+			message: `C1 Speaking Coach ${info.version} is ready to install.`,
+			detail: 'Restart now to finish the update. Your settings and practice history will be kept.',
+			buttons: ['Restart and update', 'Later'],
+			defaultId: 0,
+			cancelId: 1,
+		};
+		const { response } = mainWindow
+			? await dialog.showMessageBox(mainWindow, options)
+			: await dialog.showMessageBox(options);
+
+		if (response === 0) {
+			isQuitting = true;
+			await shutdownServices();
+			autoUpdater.quitAndInstall(false, true);
+		}
+	});
+
+	autoUpdater.on('error', (error) => {
+		console.error('[Updater] Update check failed:', error);
+	});
+
+	const checkForUpdates = () => {
+		void autoUpdater.checkForUpdates().catch((error) => {
+			console.error('[Updater] Could not check for updates:', error);
+		});
+	};
+
+	setTimeout(checkForUpdates, 5_000);
+	setInterval(checkForUpdates, 4 * 60 * 60 * 1_000);
+}
+
 // App lifecycle
 app.whenReady().then(async () => {
 	try {
@@ -157,6 +206,7 @@ app.whenReady().then(async () => {
 		console.log('[Main] Services initialized, creating window...');
 		await createWindow();
 		console.log('[Main] Window created successfully');
+		initializeAutoUpdater();
 	} catch (error) {
 		console.error('[Main] Error during initialization:', error);
 		console.error(
@@ -167,6 +217,7 @@ app.whenReady().then(async () => {
 		try {
 			await createWindow();
 			console.log('[Main] Window created despite initialization errors');
+			initializeAutoUpdater();
 		} catch (windowError) {
 			console.error('[Main] Failed to create window:', windowError);
 			app.quit();
@@ -189,7 +240,12 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', async (event) => {
+	if (isQuitting) {
+		return;
+	}
+
 	event.preventDefault();
+	isQuitting = true;
 	await shutdownServices();
 	app.exit(0);
 });
