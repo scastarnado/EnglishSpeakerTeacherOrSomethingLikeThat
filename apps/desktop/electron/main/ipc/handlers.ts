@@ -17,7 +17,7 @@ import {
 	Turn,
 } from '@shared/index';
 import axios from 'axios';
-import { ipcMain } from 'electron';
+import { dialog, ipcMain } from 'electron';
 import { AIServiceManager } from '../services/ai-service-manager';
 import { AudioManager } from '../services/audio-manager';
 import { DatabaseManager } from '../services/database-manager';
@@ -413,6 +413,23 @@ export function registerIPCHandlers(services: Services): void {
 			}
 		},
 	);
+
+	ipcMain.handle('system:select-webui-launcher', async (): Promise<string | null> => {
+		const result = await dialog.showOpenDialog({
+			title: 'Select Stable Diffusion WebUI launcher',
+			properties: ['openFile'],
+			filters:
+				process.platform === 'win32'
+					? [{ name: 'WebUI launcher', extensions: ['bat', 'cmd', 'ps1'] }]
+					: [{ name: 'WebUI launcher', extensions: ['sh'] }],
+		});
+
+		if (result.canceled || !result.filePaths.length) {
+			return null;
+		}
+
+		return result.filePaths[0];
+	});
 
 	ipcMain.handle(
 		'models:list',

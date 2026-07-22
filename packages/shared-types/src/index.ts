@@ -457,6 +457,8 @@ export const Part2ImageGenerationRequestSchema = z.object({
 	topicTags: z.array(z.string()),
 	imageDescriptions: z.array(z.string()).optional(),
 	imageModel: z.string().optional(),
+	imageWebuiPath: z.string().optional(),
+	autostartImageProvider: z.boolean().optional(),
 	count: z.number().min(1).max(3).default(3),
 });
 
@@ -671,7 +673,7 @@ export type IPCChannels = {
 
 	// Audio
 	'audio:save-recording': {
-		request: { sessionId: string; audioBlob: Blob };
+		request: { sessionId: string; audioBlob: ArrayBuffer };
 		response: { path: string };
 	};
 	'audio:transcribe': {
@@ -728,7 +730,8 @@ export type IPCChannels = {
 		request: void;
 		response: { available: boolean; version?: string; models: string[] };
 	};
-	'system:list-microphones': { request: void; response: MediaDeviceInfo[] };
+	'system:list-microphones': { request: void; response: { deviceId: string; label: string; kind: string }[] };
+	'system:select-webui-launcher': { request: void; response: string | null };
 
 	// Settings
 	'settings:get': { request: void; response: UserSettings };

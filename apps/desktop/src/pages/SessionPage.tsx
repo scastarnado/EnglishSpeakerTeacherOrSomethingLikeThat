@@ -491,7 +491,7 @@ export default function SessionPage() {
 
   async function preparePart2Images(step: ExamStep, sessionData: Session): Promise<ExamStep> {
     if (step.part !== 2 || !step.task) return getStepWithGeneratedImages(step);
-    if (!preferences.enableLocalImageGeneration || !preferences.imageModel) {
+    if (!preferences.enableLocalImageGeneration) {
       return getStepWithGeneratedImages(step);
     }
 
@@ -522,6 +522,8 @@ export default function SessionPage() {
           topicTags: step.task.topicTags,
           imageDescriptions: step.task.imageAssets?.map((image) => image.altText) ?? [],
           imageModel: preferences.imageModel || undefined,
+          imageWebuiPath: preferences.imageWebuiPath || undefined,
+          autostartImageProvider: preferences.imageWebuiPath ? true : undefined,
           count: 3,
         }).then((response) => {
           if (!response.images.length) {
@@ -571,6 +573,13 @@ export default function SessionPage() {
       return getStepWithGeneratedImages(step);
     } catch (error: any) {
       console.error('Failed to generate Part 2 images:', error);
+      notify({
+        type: 'error',
+        title: 'Image generation unavailable',
+        message: preferences.imageWebuiPath
+          ? 'Could not start or reach your configured Stable Diffusion WebUI launcher. Check Settings and make sure it starts with API enabled.'
+          : 'Start Stable Diffusion WebUI/SD.Next with API enabled, or choose its webui-user.bat in Settings.',
+      });
       return getStepWithGeneratedImages(step);
     } finally {
       setIsProcessing(false);

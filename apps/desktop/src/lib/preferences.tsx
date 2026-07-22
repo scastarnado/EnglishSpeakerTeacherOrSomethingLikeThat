@@ -10,8 +10,10 @@ export type AppPreferences = {
   autoReplayPrompts: boolean;
   showPracticeTips: boolean;
   enableLocalImageGeneration: boolean;
+  localImageGenerationPreferenceSet: boolean;
   llmModel: string;
   imageModel: string;
+  imageWebuiPath: string;
   whisperModel: string;
   ttsVoice: string;
 };
@@ -24,9 +26,11 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   reduceMotion: false,
   autoReplayPrompts: false,
   showPracticeTips: true,
-  enableLocalImageGeneration: false,
+  enableLocalImageGeneration: true,
+  localImageGenerationPreferenceSet: false,
   llmModel: 'qwen2.5:7b-instruct',
   imageModel: '',
+  imageWebuiPath: '',
   whisperModel: 'small.en',
   ttsVoice: 'british_male',
 };
@@ -42,7 +46,11 @@ const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 function loadPreferences(): AppPreferences {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Partial<AppPreferences>;
-    return { ...DEFAULT_PREFERENCES, ...parsed };
+    const preferences = { ...DEFAULT_PREFERENCES, ...parsed };
+    if (!parsed.localImageGenerationPreferenceSet) {
+      preferences.enableLocalImageGeneration = true;
+    }
+    return preferences;
   } catch {
     return DEFAULT_PREFERENCES;
   }

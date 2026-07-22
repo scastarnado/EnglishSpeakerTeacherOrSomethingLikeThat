@@ -76,6 +76,7 @@ const api = {
 		getCapabilities: () => ipcRenderer.invoke('system:get-capabilities'),
 		checkOllama: () => ipcRenderer.invoke('system:check-ollama'),
 		listMicrophones: () => ipcRenderer.invoke('system:list-microphones'),
+		selectWebuiLauncher: () => ipcRenderer.invoke('system:select-webui-launcher'),
 	},
 
 	// Settings operations

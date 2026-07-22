@@ -58,6 +58,13 @@ export class AIServiceManager {
 			}
 
 			const command = serviceExecutable;
+			const bundledWebuiPath = path.join(
+				process.resourcesPath,
+				'local-ai',
+				'stable-diffusion-webui',
+				'webui-user.bat',
+			);
+			const hasBundledWebui = app.isPackaged && fs.existsSync(bundledWebuiPath);
 			const args =
 				process.env.NODE_ENV === 'development' || !app.isPackaged ?
 					[
@@ -78,6 +85,12 @@ export class AIServiceManager {
 					AI_SERVICE_AUTH_TOKEN: this.authToken,
 					AI_SERVICE_DATA_PATH: this.userDataPath,
 					AI_SERVICE_CACHE_PATH: path.join(this.userDataPath, 'cache'),
+					...(hasBundledWebui
+						? {
+								LOCAL_IMAGE_WEBUI_PATH: bundledWebuiPath,
+								LOCAL_IMAGE_AUTOSTART: 'true',
+							}
+						: {}),
 				},
 				stdio: ['ignore', 'pipe', 'pipe'],
 				windowsVerbatimArguments: process.env.NODE_ENV === 'development',

@@ -84,6 +84,22 @@
       {
         "from": "../../node_modules/sql.js/dist/sql-wasm.wasm",
         "to": "sql-wasm.wasm"
+      },
+      {
+        "from": "../../local-ai",
+        "to": "local-ai",
+        "filter": [
+          "python310/**",
+          "stable-diffusion-webui/**",
+          "!stable-diffusion-webui/.git/**",
+          "!stable-diffusion-webui/cache/**",
+          "!stable-diffusion-webui/tmp/**",
+          "!stable-diffusion-webui/test/**",
+          "!stable-diffusion-webui/**/*.log",
+          "!stable-diffusion-webui/**/__pycache__/**",
+          "!downloads/**",
+          "!test-output/**"
+        ]
       }
     ],
     "win": {

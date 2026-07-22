@@ -39,15 +39,16 @@ class Settings(BaseSettings):
     # Compatible with local Stable Diffusion WebUI / SD.Next APIs started with --api.
     LOCAL_IMAGE_PROVIDER: str = os.getenv("LOCAL_IMAGE_PROVIDER", "stable-diffusion-webui")
     STABLE_DIFFUSION_API_URL: str = os.getenv("STABLE_DIFFUSION_API_URL", "http://127.0.0.1:7860")
-    LOCAL_IMAGE_WIDTH: int = int(os.getenv("LOCAL_IMAGE_WIDTH", "640"))
-    LOCAL_IMAGE_HEIGHT: int = int(os.getenv("LOCAL_IMAGE_HEIGHT", "448"))
-    LOCAL_IMAGE_STEPS: int = int(os.getenv("LOCAL_IMAGE_STEPS", "14"))
-    LOCAL_IMAGE_CFG_SCALE: float = float(os.getenv("LOCAL_IMAGE_CFG_SCALE", "5.5"))
-    LOCAL_IMAGE_SAMPLER: str = os.getenv("LOCAL_IMAGE_SAMPLER", "Euler a")
+    LOCAL_IMAGE_WIDTH: int = int(os.getenv("LOCAL_IMAGE_WIDTH", "1024"))
+    LOCAL_IMAGE_HEIGHT: int = int(os.getenv("LOCAL_IMAGE_HEIGHT", "704"))
+    LOCAL_IMAGE_STEPS: int = int(os.getenv("LOCAL_IMAGE_STEPS", "28"))
+    LOCAL_IMAGE_CFG_SCALE: float = float(os.getenv("LOCAL_IMAGE_CFG_SCALE", "6.0"))
+    LOCAL_IMAGE_SAMPLER: str = os.getenv("LOCAL_IMAGE_SAMPLER", "DPM++ 2M")
+    LOCAL_IMAGE_SCHEDULER: str = os.getenv("LOCAL_IMAGE_SCHEDULER", "Karras")
     LOCAL_IMAGE_CHECKPOINT: Optional[str] = os.getenv("LOCAL_IMAGE_CHECKPOINT")
     LOCAL_IMAGE_AUTOSTART: bool = os.getenv("LOCAL_IMAGE_AUTOSTART", "false").lower() not in ("0", "false", "no")
     LOCAL_IMAGE_WEBUI_PATH: Optional[str] = os.getenv("LOCAL_IMAGE_WEBUI_PATH")
-    LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS: int = int(os.getenv("LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS", "120"))
+    LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS: int = int(os.getenv("LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS", "300"))
 
     # Performance settings
     MAX_CONCURRENT_TRANSCRIPTIONS: int = 2

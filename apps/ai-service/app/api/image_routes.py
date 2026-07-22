@@ -65,6 +65,8 @@ class Part2ImageGenerationRequest(BaseModel):
     topicTags: list[str]
     imageDescriptions: list[str] = Field(default_factory=list)
     imageModel: str | None = None
+    imageWebuiPath: str | None = None
+    autostartImageProvider: bool | None = None
     count: int = Field(default=3, ge=1, le=3)
 
 
@@ -115,8 +117,11 @@ def _cache_key(request: Part2ImageGenerationRequest) -> str:
         "steps": settings.LOCAL_IMAGE_STEPS,
         "cfg": settings.LOCAL_IMAGE_CFG_SCALE,
         "sampler": settings.LOCAL_IMAGE_SAMPLER,
+        "scheduler": settings.LOCAL_IMAGE_SCHEDULER,
         "checkpoint": request.imageModel or settings.LOCAL_IMAGE_CHECKPOINT,
-        "safety_version": 6,
+        "webui_path": request.imageWebuiPath,
+        # Invalidate images made with the previous fast, low-resolution defaults.
+        "safety_version": 7,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -239,7 +244,9 @@ def _default_webui_script_path() -> Path:
     return repo_root / "local-ai" / "stable-diffusion-webui" / "webui-user.bat"
 
 
-def _webui_script_path() -> Path:
+def _webui_script_path(request: Part2ImageGenerationRequest | None = None) -> Path:
+    if request and request.imageWebuiPath:
+        return Path(request.imageWebuiPath)
     if settings.LOCAL_IMAGE_WEBUI_PATH:
         return Path(settings.LOCAL_IMAGE_WEBUI_PATH)
     return _default_webui_script_path()
@@ -291,14 +298,23 @@ async def list_local_image_models():
     return {"models": sorted(set(models), key=models.index)}
 
 
-async def _ensure_local_provider_ready(timeout_seconds: float | None = None) -> None:
+async def _ensure_local_provider_ready(
+    timeout_seconds: float | None = None,
+    request: Part2ImageGenerationRequest | None = None,
+) -> None:
     if await _is_local_provider_ready():
         return
 
-    if not settings.LOCAL_IMAGE_AUTOSTART:
+    should_autostart = (
+        request.autostartImageProvider
+        if request and request.autostartImageProvider is not None
+        else settings.LOCAL_IMAGE_AUTOSTART
+    )
+
+    if not should_autostart:
         raise RuntimeError(_local_image_unavailable_message())
 
-    script_path = _webui_script_path()
+    script_path = _webui_script_path(request)
     if not script_path.exists():
         raise RuntimeError(_local_image_unavailable_message())
 
@@ -634,6 +650,7 @@ async def _generate_local_stable_diffusion_image(
             "width": settings.LOCAL_IMAGE_WIDTH,
             "height": settings.LOCAL_IMAGE_HEIGHT,
             "sampler_name": settings.LOCAL_IMAGE_SAMPLER,
+            "scheduler": settings.LOCAL_IMAGE_SCHEDULER,
             "batch_size": 1,
             "n_iter": 1,
             "restore_faces": False,
@@ -771,7 +788,7 @@ async def _generate_part2_images_uncached(
                 "total": request.count,
             }
         )
-        await _ensure_local_provider_ready(total_timeout - (time.monotonic() - started_at))
+        await _ensure_local_provider_ready(total_timeout - (time.monotonic() - started_at), request)
         await _refresh_local_checkpoints()
         if time.monotonic() - started_at >= total_timeout:
             raise TimeoutError(f"Local image generation exceeded the {total_timeout}s limit before rendering")

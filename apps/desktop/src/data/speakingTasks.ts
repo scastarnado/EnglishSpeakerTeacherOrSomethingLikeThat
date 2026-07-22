@@ -1,6 +1,9 @@
 import learningSkillsNavigation from '../assets/part2-ai/learning-skills-navigation.png';
 import learningSkillsOnline from '../assets/part2-ai/learning-skills-online.png';
 import learningSkillsWorkshop from '../assets/part2-ai/learning-skills-workshop.png';
+import environmentPlanningMeeting from '../assets/part2-ai/environment-planning-meeting.png';
+import environmentRecycling from '../assets/part2-ai/environment-recycling.png';
+import environmentTreePlanting from '../assets/part2-ai/environment-tree-planting.png';
 
 export type SpeakingTaskLite = {
   id: string;
@@ -223,7 +226,8 @@ export const PART2_TASKS: SpeakingTaskLite[] = [
     createdAt: CREATED_AT,
     isActive: true,
   },
-  part2Task(
+  {
+    ...part2Task(
     '11111111-1111-4111-8111-111111111112',
     'People solving environmental problems',
     ['environment', 'community', 'responsibility'],
@@ -235,7 +239,28 @@ export const PART2_TASKS: SpeakingTaskLite[] = [
       { title: 'Tree planting day', alt: 'People planting young trees in a public green space.', sky: '#bbf7d0', ground: '#3f6212', accent: '#15803d', secondary: '#ca8a04', setting: 'nature', people: 3, props: ['plants', 'tools', 'map'] },
       { title: 'Environmental planning meeting', alt: 'People discussing an environmental project around a laptop and documents.', sky: '#e0f2fe', ground: '#78716c', accent: '#0f766e', secondary: '#7c3aed', setting: 'indoor', people: 3, props: ['laptop', 'books', 'recycling'] },
     ],
-  ),
+    ),
+    imageAssets: [
+      {
+        id: 'A',
+        url: environmentRecycling,
+        altText: 'Volunteers sorting recyclable materials at a community collection point.',
+        licence: AI_PHOTO_LICENCE,
+      },
+      {
+        id: 'B',
+        url: environmentTreePlanting,
+        altText: 'People planting young trees in a public green space.',
+        licence: AI_PHOTO_LICENCE,
+      },
+      {
+        id: 'C',
+        url: environmentPlanningMeeting,
+        altText: 'People discussing an environmental project around a laptop and documents.',
+        licence: AI_PHOTO_LICENCE,
+      },
+    ],
+  },
   part2Task(
     '11111111-1111-4111-8111-111111111113',
     'People preparing for important events',

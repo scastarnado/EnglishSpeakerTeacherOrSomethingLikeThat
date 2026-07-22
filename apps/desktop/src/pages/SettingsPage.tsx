@@ -65,14 +65,36 @@ export default function SettingsPage() {
     try {
       const models = await window.electronAPI.ai.listImageModels();
       setImageModels(models);
-      if (models.length && !preferences.imageModel) {
-        updatePreferences({ imageModel: models[0] });
-      }
     } catch (error) {
       console.error('Failed to list image models:', error);
       setImageModels([]);
     } finally {
       setIsCheckingImageModels(false);
+    }
+  }
+
+  async function chooseWebuiLauncher() {
+    try {
+      const selectedPath = await window.electronAPI.system.selectWebuiLauncher();
+      if (!selectedPath) return;
+
+      updatePreferences({
+        imageWebuiPath: selectedPath,
+        enableLocalImageGeneration: true,
+        localImageGenerationPreferenceSet: true,
+      });
+      notify({
+        type: 'success',
+        title: 'Image launcher saved',
+        message: 'Part 2 can now autostart your local image generator.',
+      });
+    } catch (error) {
+      console.error('Failed to select WebUI launcher:', error);
+      notify({
+        type: 'error',
+        title: 'Could not select launcher',
+        message: 'Please paste the path manually.',
+      });
     }
   }
 
@@ -302,13 +324,18 @@ export default function SettingsPage() {
               <span>
                 <span className="block font-semibold">Generate Part 2 Images Locally</span>
                 <span className="text-sm text-muted-foreground">
-                  Off uses the built-in practice images immediately.
+                  Uses your local image server when available.
                 </span>
               </span>
               <input
                 type="checkbox"
                 checked={preferences.enableLocalImageGeneration}
-                onChange={(event) => updatePreferences({ enableLocalImageGeneration: event.target.checked })}
+                onChange={(event) =>
+                  updatePreferences({
+                    enableLocalImageGeneration: event.target.checked,
+                    localImageGenerationPreferenceSet: true,
+                  })
+                }
                 className="h-5 w-5 accent-primary"
               />
             </label>
@@ -330,20 +357,46 @@ export default function SettingsPage() {
               value={preferences.imageModel}
               onChange={(e) => updatePreferences({ imageModel: e.target.value })}
               className="w-full px-3 py-2 border border-border rounded-md bg-background"
-              disabled={!preferences.enableLocalImageGeneration || isCheckingImageModels || imageModelOptions.length === 0}
+              disabled={!preferences.enableLocalImageGeneration || isCheckingImageModels}
             >
+              <option value="">Use local server default</option>
               {imageModelOptions.length ? (
                 imageModelOptions.map((model) => (
                   <option key={model} value={model}>
                     {model}
                   </option>
                 ))
-              ) : (
-                <option value="">Built-in Part 2 images</option>
-              )}
+              ) : null}
             </select>
+            <div className="mt-4">
+              <label className="block font-semibold mb-2">Stable Diffusion WebUI Launcher</label>
+              <div className="flex flex-col gap-2 md:flex-row">
+                <input
+                  value={preferences.imageWebuiPath}
+                  onChange={(event) => updatePreferences({ imageWebuiPath: event.target.value })}
+                  placeholder="Path to webui-user.bat"
+                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2"
+                />
+                <button
+                  type="button"
+                  onClick={chooseWebuiLauncher}
+                  className="rounded-md border border-border px-4 py-2 transition-colors hover:bg-accent"
+                >
+                  Browse
+                </button>
+                {preferences.imageWebuiPath && (
+                  <button
+                    type="button"
+                    onClick={() => updatePreferences({ imageWebuiPath: '' })}
+                    className="rounded-md border border-border px-4 py-2 transition-colors hover:bg-accent"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Optional. Requires a Stable Diffusion-compatible local server with API enabled; otherwise keep this off for built-in Part 2 images.
+              Requires a Stable Diffusion-compatible local server with API enabled. If the server is not already running, the saved launcher path is used to start it.
             </p>
           </div>
 

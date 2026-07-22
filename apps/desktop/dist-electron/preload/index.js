@@ -1,1 +1,58 @@
-"use strict";const i=require("electron"),n={session:{create:e=>i.ipcRenderer.invoke("session:create",e),start:e=>i.ipcRenderer.invoke("session:start",e),pause:e=>i.ipcRenderer.invoke("session:pause",e),resume:e=>i.ipcRenderer.invoke("session:resume",e),complete:e=>i.ipcRenderer.invoke("session:complete",e),cancel:e=>i.ipcRenderer.invoke("session:cancel",e),get:e=>i.ipcRenderer.invoke("session:get",e),list:e=>i.ipcRenderer.invoke("session:list",e)},audio:{saveRecording:(e,s)=>i.ipcRenderer.invoke("audio:save-recording",{sessionId:e,audioData:s}),transcribe:e=>i.ipcRenderer.invoke("audio:transcribe",e),analyze:e=>i.ipcRenderer.invoke("audio:analyze",e),getFile:e=>i.ipcRenderer.invoke("audio:get-file",{filePath:e})},ai:{interlocutorRespond:e=>i.ipcRenderer.invoke("ai:interlocutor-respond",e),coCandidateRespond:e=>i.ipcRenderer.invoke("ai:co-candidate-respond",e),generateAssessment:e=>i.ipcRenderer.invoke("ai:generate-assessment",e),ttsGenerate:e=>i.ipcRenderer.invoke("ai:tts-generate",e),generatePart2Images:e=>i.ipcRenderer.invoke("ai:generate-part2-images",e),getPart2ImageProgress:()=>i.ipcRenderer.invoke("ai:get-part2-image-progress"),listImageModels:()=>i.ipcRenderer.invoke("ai:list-image-models")},db:{saveTurn:e=>i.ipcRenderer.invoke("db:save-turn",e),getTurns:e=>i.ipcRenderer.invoke("db:get-turns",e),saveAssessment:e=>i.ipcRenderer.invoke("db:save-assessment",e),getAssessment:e=>i.ipcRenderer.invoke("db:get-assessment",e)},system:{checkHealth:()=>i.ipcRenderer.invoke("system:check-health"),getCapabilities:()=>i.ipcRenderer.invoke("system:get-capabilities"),checkOllama:()=>i.ipcRenderer.invoke("system:check-ollama"),listMicrophones:()=>i.ipcRenderer.invoke("system:list-microphones")},settings:{get:()=>i.ipcRenderer.invoke("settings:get"),update:e=>i.ipcRenderer.invoke("settings:update",e)},models:{list:e=>i.ipcRenderer.invoke("models:list",e),test:e=>i.ipcRenderer.invoke("models:test",e)}};i.contextBridge.exposeInMainWorld("electronAPI",n);
+"use strict";
+const electron = require("electron");
+const api = {
+  // Session management
+  session: {
+    create: (config) => electron.ipcRenderer.invoke("session:create", config),
+    start: (request) => electron.ipcRenderer.invoke("session:start", request),
+    pause: (request) => electron.ipcRenderer.invoke("session:pause", request),
+    resume: (request) => electron.ipcRenderer.invoke("session:resume", request),
+    complete: (request) => electron.ipcRenderer.invoke("session:complete", request),
+    cancel: (request) => electron.ipcRenderer.invoke("session:cancel", request),
+    get: (request) => electron.ipcRenderer.invoke("session:get", request),
+    list: (request) => electron.ipcRenderer.invoke("session:list", request)
+  },
+  // Audio operations
+  audio: {
+    saveRecording: (sessionId, audioData) => electron.ipcRenderer.invoke("audio:save-recording", { sessionId, audioData }),
+    transcribe: (request) => electron.ipcRenderer.invoke("audio:transcribe", request),
+    analyze: (request) => electron.ipcRenderer.invoke("audio:analyze", request),
+    getFile: (filePath) => electron.ipcRenderer.invoke("audio:get-file", { filePath })
+  },
+  // AI operations
+  ai: {
+    interlocutorRespond: (context) => electron.ipcRenderer.invoke("ai:interlocutor-respond", context),
+    coCandidateRespond: (context) => electron.ipcRenderer.invoke("ai:co-candidate-respond", context),
+    generateAssessment: (request) => electron.ipcRenderer.invoke("ai:generate-assessment", request),
+    ttsGenerate: (request) => electron.ipcRenderer.invoke("ai:tts-generate", request),
+    generatePart2Images: (request) => electron.ipcRenderer.invoke("ai:generate-part2-images", request),
+    getPart2ImageProgress: () => electron.ipcRenderer.invoke("ai:get-part2-image-progress"),
+    listImageModels: () => electron.ipcRenderer.invoke("ai:list-image-models")
+  },
+  // Database operations
+  db: {
+    saveTurn: (turn) => electron.ipcRenderer.invoke("db:save-turn", turn),
+    getTurns: (request) => electron.ipcRenderer.invoke("db:get-turns", request),
+    saveAssessment: (assessment) => electron.ipcRenderer.invoke("db:save-assessment", assessment),
+    getAssessment: (request) => electron.ipcRenderer.invoke("db:get-assessment", request)
+  },
+  // System operations
+  system: {
+    checkHealth: () => electron.ipcRenderer.invoke("system:check-health"),
+    getCapabilities: () => electron.ipcRenderer.invoke("system:get-capabilities"),
+    checkOllama: () => electron.ipcRenderer.invoke("system:check-ollama"),
+    listMicrophones: () => electron.ipcRenderer.invoke("system:list-microphones"),
+    selectWebuiLauncher: () => electron.ipcRenderer.invoke("system:select-webui-launcher")
+  },
+  // Settings operations
+  settings: {
+    get: () => electron.ipcRenderer.invoke("settings:get"),
+    update: (settings) => electron.ipcRenderer.invoke("settings:update", settings)
+  },
+  // Model operations
+  models: {
+    list: (request) => electron.ipcRenderer.invoke("models:list", request),
+    test: (request) => electron.ipcRenderer.invoke("models:test", request)
+  }
+};
+electron.contextBridge.exposeInMainWorld("electronAPI", api);
