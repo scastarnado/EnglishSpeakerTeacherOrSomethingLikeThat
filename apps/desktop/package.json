@@ -6,7 +6,7 @@
   "main": "dist-electron/index.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build && electron-builder --publish never",
     "build:win": "npm run build -- --win",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx",
