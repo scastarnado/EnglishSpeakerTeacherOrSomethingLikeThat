@@ -157,6 +157,12 @@ export function registerIPCHandlers(services: Services): void {
 					...request,
 					audioPath: absolutePath,
 				},
+				{
+					// Part 3 recordings can be several minutes long. CPU Whisper may also
+					// need to load the model on the first request, so the service-wide
+					// two-minute timeout is too short for a valid recording.
+					timeout: 10 * 60 * 1000,
+				},
 			);
 
 			return response.data;

@@ -673,7 +673,7 @@ export type IPCChannels = {
 
 	// Audio
 	'audio:save-recording': {
-		request: { sessionId: string; audioBlob: ArrayBuffer };
+		request: { sessionId: string; audioData: Uint8Array };
 		response: { path: string };
 	};
 	'audio:transcribe': {

@@ -248,6 +248,7 @@ export default function SessionPage() {
   const [imageGeneration, setImageGeneration] = useState<ImageGenerationState | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStepRef = useRef<ExamStep | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const isGettingPromptRef = useRef(false);
@@ -693,18 +694,43 @@ export default function SessionPage() {
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const preferredMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : '';
+      const mediaRecorder = preferredMimeType
+        ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+        : new MediaRecorder(stream);
 
       audioChunksRef.current = [];
+      recordingStepRef.current = currentStep;
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
       mediaRecorder.onstop = async () => {
-        await processRecording();
+        mediaRecorderRef.current = null;
+        try {
+          await processRecording(recordingStepRef.current ?? currentStep, mediaRecorder.mimeType);
+        } finally {
+          recordingStepRef.current = null;
+          stream.getTracks().forEach((track) => track.stop());
+        }
+      };
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder failed:', event.error);
+        setIsRecording(false);
+        setIsProcessing(false);
+        setRecordingStartedAt(null);
         stream.getTracks().forEach((track) => track.stop());
+        notify({
+          type: 'error',
+          title: 'Recording failed',
+          message: event.error?.message || 'The microphone recording could not be completed.',
+        });
       };
 
-      mediaRecorder.start();
+      // Periodic chunks make long Part 3 recordings safer and ensure data is
+      // available promptly when Stop is pressed.
+      mediaRecorder.start(1000);
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
       setRecordingSeconds(0);
@@ -721,15 +747,17 @@ export default function SessionPage() {
   }
 
   function stopRecording() {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      setIsProcessing(true);
       setIsRecording(false);
       setRecordingStartedAt(null);
-      setStatusMessage('Saving recording...');
+      setStatusMessage('Finalising recording...');
+      recorder.stop();
     }
   }
 
-  async function processRecording() {
+  async function processRecording(stepAtRecording: ExamStep, mimeType: string) {
     if (!session) {
       notify({
         type: 'error',
@@ -743,9 +771,15 @@ export default function SessionPage() {
     setStatusMessage('Transcribing your answer...');
 
     try {
-      const stepAtRecording = currentStep;
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      if (!audioChunksRef.current.length) {
+        throw new Error('No audio data was captured. Check the selected microphone and try again.');
+      }
+
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
       const audioBuffer = await audioBlob.arrayBuffer();
+      if (audioBuffer.byteLength < 1024) {
+        throw new Error('The recording was empty or too short to transcribe. Please try again.');
+      }
       const audioData = new Uint8Array(audioBuffer);
       const { path: audioPath } = await window.electronAPI.audio.saveRecording(
         session.id,
@@ -758,6 +792,10 @@ export default function SessionPage() {
         language: 'en',
         includeWordTimestamps: true,
       });
+
+      if (!transcription.transcript.trim()) {
+        throw new Error('No speech was detected. Try speaking closer to the microphone and record again.');
+      }
 
       const savedTurns: Turn[] = await window.electronAPI.db.getTurns({ sessionId: session.id });
       setStatusMessage('Saving transcript...');

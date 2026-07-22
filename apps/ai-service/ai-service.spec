@@ -1,11 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
+
+faster_whisper_data = collect_data_files('faster_whisper')
 
 a = Analysis(
     ['run_service.py'],
     pathex=['.'],
     binaries=[],
-    datas=[],
+    # faster-whisper loads its Silero VAD ONNX model from package data at
+    # runtime. PyInstaller does not discover this non-Python asset itself.
+    datas=faster_whisper_data,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -84,36 +84,49 @@ class TranscriptionService:
 
         model = self.models[model_size]
 
-        # Transcribe
-        segments, info = model.transcribe(
-            audio_path,
-            language=language,
-            word_timestamps=include_word_timestamps,
-            vad_filter=True,
-            vad_parameters={
-                "threshold": 0.5,
-                "min_speech_duration_ms": 250,
-                "min_silence_duration_ms": 100,
-            },
-        )
+        def run_transcription(use_vad: bool):
+            segments, info = model.transcribe(
+                audio_path,
+                language=language,
+                word_timestamps=include_word_timestamps,
+                vad_filter=use_vad,
+                vad_parameters={
+                    "threshold": 0.5,
+                    "min_speech_duration_ms": 250,
+                    "min_silence_duration_ms": 300,
+                } if use_vad else None,
+            )
 
-        # Collect results
-        full_transcript = []
-        words = []
+            full_transcript = []
+            words = []
+            for segment in segments:
+                full_transcript.append(segment.text)
 
-        for segment in segments:
-            full_transcript.append(segment.text)
-
-            if include_word_timestamps and segment.words:
-                for word in segment.words:
-                    words.append(
-                        WordTimestamp(
-                            word=word.word.strip(),
-                            start=word.start,
-                            end=word.end,
-                            confidence=word.probability,
+                if include_word_timestamps and segment.words:
+                    for word in segment.words:
+                        words.append(
+                            WordTimestamp(
+                                word=word.word.strip(),
+                                start=word.start,
+                                end=word.end,
+                                confidence=word.probability,
+                            )
                         )
-                    )
+            return full_transcript, words, info
+
+        try:
+            full_transcript, words, info = run_transcription(use_vad=True)
+        except Exception as exc:
+            # A packaged build made without faster_whisper's ONNX package data
+            # can still transcribe safely without VAD. The spec now includes
+            # the asset, while this fallback keeps older/incomplete bundles usable.
+            error_text = str(exc).lower()
+            if "silero_vad" not in error_text or not any(
+                marker in error_text for marker in ("no_suchfile", "doesn't exist", "not found")
+            ):
+                raise
+            print("[Transcription] Silero VAD asset missing; retrying without VAD")
+            full_transcript, words, info = run_transcription(use_vad=False)
 
         transcript_text = " ".join(full_transcript).strip()
 
