@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     LOCAL_IMAGE_CHECKPOINT: Optional[str] = os.getenv("LOCAL_IMAGE_CHECKPOINT")
     LOCAL_IMAGE_AUTOSTART: bool = os.getenv("LOCAL_IMAGE_AUTOSTART", "false").lower() not in ("0", "false", "no")
     LOCAL_IMAGE_WEBUI_PATH: Optional[str] = os.getenv("LOCAL_IMAGE_WEBUI_PATH")
-    LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS: int = int(os.getenv("LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS", "300"))
+    LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS: int = int(os.getenv("LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS", "600"))
 
     # Performance settings
     MAX_CONCURRENT_TRANSCRIPTIONS: int = 2

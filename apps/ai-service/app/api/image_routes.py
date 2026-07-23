@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -316,28 +317,51 @@ async def _ensure_local_provider_ready(
 
     script_path = _webui_script_path(request)
     if not script_path.exists():
-        raise RuntimeError(_local_image_unavailable_message())
+        raise RuntimeError(
+            f"{_local_image_unavailable_message()} Launcher not found at {script_path}."
+        )
 
     log_path = script_path.parent / "webui-autostart.log"
     err_path = script_path.parent / "webui-autostart.err.log"
-    stdout = log_path.open("ab")
-    stderr = err_path.open("ab")
+    suffix = script_path.suffix.lower()
+    if sys.platform == "win32" and suffix in (".bat", ".cmd"):
+        command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", str(script_path)]
+    elif sys.platform == "win32" and suffix == ".ps1":
+        command = [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+        ]
+    else:
+        command = [str(script_path)]
 
     creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    subprocess.Popen(
-        [str(script_path)],
-        cwd=str(script_path.parent),
-        stdout=stdout,
-        stderr=stderr,
-        stdin=subprocess.DEVNULL,
-        creationflags=creationflags,
-    )
+    with log_path.open("ab") as stdout, err_path.open("ab") as stderr:
+        provider_process = subprocess.Popen(
+            command,
+            cwd=str(script_path.parent),
+            stdout=stdout,
+            stderr=stderr,
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
 
     deadline = time.monotonic() + (timeout_seconds if timeout_seconds is not None else 450)
     while time.monotonic() < deadline:
         await asyncio.sleep(min(5, max(0.1, deadline - time.monotonic())))
         if await _is_local_provider_ready():
             return
+        return_code = provider_process.poll()
+        if return_code is not None:
+            raise RuntimeError(
+                f"Local image provider launcher exited with code {return_code}. "
+                f"See {log_path} and {err_path} for details."
+            )
 
     raise RuntimeError(
         f"Local image provider did not become ready at {settings.STABLE_DIFFUSION_API_URL} before the image timeout"
@@ -788,7 +812,8 @@ async def _generate_part2_images_uncached(
                 "total": request.count,
             }
         )
-        await _ensure_local_provider_ready(total_timeout - (time.monotonic() - started_at), request)
+        startup_timeout = min(180, total_timeout - (time.monotonic() - started_at))
+        await _ensure_local_provider_ready(startup_timeout, request)
         await _refresh_local_checkpoints()
         if time.monotonic() - started_at >= total_timeout:
             raise TimeoutError(f"Local image generation exceeded the {total_timeout}s limit before rendering")
@@ -878,13 +903,18 @@ async def _generate_part2_images_uncached(
             fallbackReason=f"Local Part 2 image generation stopped after the {total_timeout}s limit. The app will use the built-in Part 2 images. Details: {exc}",
         )
     except Exception as exc:
+        unavailable_message = _local_image_unavailable_message()
+        detail = str(exc).strip()
+        fallback_reason = (
+            detail
+            if detail.startswith(unavailable_message)
+            else f"{unavailable_message} Details: {detail}"
+        )
         return Part2ImageGenerationResponse(
             images=[],
             fromCache=False,
             provider=settings.LOCAL_IMAGE_PROVIDER,
-            fallbackReason=(
-                f"{_local_image_unavailable_message()} Details: {exc}"
-            ),
+            fallbackReason=fallback_reason,
         )
     finally:
         if not images:

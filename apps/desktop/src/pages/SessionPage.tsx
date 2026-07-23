@@ -524,7 +524,9 @@ export default function SessionPage() {
           imageDescriptions: step.task.imageAssets?.map((image) => image.altText) ?? [],
           imageModel: preferences.imageModel || undefined,
           imageWebuiPath: preferences.imageWebuiPath || undefined,
-          autostartImageProvider: preferences.imageWebuiPath ? true : undefined,
+          // Enabling local images authorizes the service to start either the
+          // selected launcher or the bundled/default project launcher.
+          autostartImageProvider: true,
           count: 3,
         }).then((response) => {
           if (!response.images.length) {
@@ -574,12 +576,14 @@ export default function SessionPage() {
       return getStepWithGeneratedImages(step);
     } catch (error: any) {
       console.error('Failed to generate Part 2 images:', error);
+      const errorMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : 'The local image generator did not return an error description.';
       notify({
         type: 'error',
         title: 'Image generation unavailable',
-        message: preferences.imageWebuiPath
-          ? 'Could not start or reach your configured Stable Diffusion WebUI launcher. Check Settings and make sure it starts with API enabled.'
-          : 'Start Stable Diffusion WebUI/SD.Next with API enabled, or choose its webui-user.bat in Settings.',
+        message: errorMessage,
       });
       return getStepWithGeneratedImages(step);
     } finally {

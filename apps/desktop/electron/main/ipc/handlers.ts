@@ -294,7 +294,10 @@ export function registerIPCHandlers(services: Services): void {
 			const response = await client.post<Part2ImageGenerationResponse>(
 				'/images/part2/generate',
 				request,
-				{ timeout: 130000 },
+				// Starting a cold Stable Diffusion runtime and rendering three images can
+				// legitimately take several minutes. Keep this longer than the backend's
+				// generation budget so Axios does not abandon a job that is still running.
+				{ timeout: 11 * 60 * 1000 },
 			);
 
 			return response.data;
