@@ -110,7 +110,7 @@ def _cache_key(request: Part2ImageGenerationRequest) -> str:
         "tags": request.topicTags,
         "imageDescriptions": request.imageDescriptions,
         "count": request.count,
-        "prompt_version": 13,
+        "prompt_version": 15,
         "provider": settings.LOCAL_IMAGE_PROVIDER,
         "api_url": settings.STABLE_DIFFUSION_API_URL,
         "width": settings.LOCAL_IMAGE_WIDTH,
@@ -121,8 +121,8 @@ def _cache_key(request: Part2ImageGenerationRequest) -> str:
         "scheduler": settings.LOCAL_IMAGE_SCHEDULER,
         "checkpoint": request.imageModel or settings.LOCAL_IMAGE_CHECKPOINT,
         "webui_path": request.imageWebuiPath,
-        # Invalidate images made with the previous fast, low-resolution defaults.
-        "safety_version": 7,
+        # Invalidate images made with previous adult-only / lower-diversity prompts.
+        "safety_version": 9,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -131,30 +131,98 @@ def _metadata_path(request: Part2ImageGenerationRequest) -> Path:
     return _cache_dir() / f"{request.sessionId}-{_cache_key(request)}.json"
 
 
-def _build_prompt(request: Part2ImageGenerationRequest, image_id: str, variation: str) -> str:
+def _build_prompt(
+    request: Part2ImageGenerationRequest,
+    image_id: str,
+    variation: str,
+    attempt: int = 0,
+) -> str:
     question_focus = _sanitize_prompt_text("; ".join(request.questions))
     tags = ", ".join(request.topicTags)
     safe_variation = _cambridge_safe_scene(request, variation)
+    demographic_plan = _demographic_plan(image_id)
+    composition_plan = _composition_plan(image_id)
+    diversity_plan = _diversity_plan(image_id, attempt)
     return (
         f"realistic documentary photo of {safe_variation}, "
+        f"{demographic_plan}, "
+        f"{composition_plan}, "
+        f"{diversity_plan}, "
         "single candid camera shot, one scene, one location, one moment, no layout, "
         "natural daylight, realistic lens perspective, realistic proportions, "
         "clear human activity, clear location, clear objects, ordinary real-world scene, "
         "single camera shot, one scene, one location, one moment in time, full-frame photograph, "
         "strictly family-safe educational image suitable for an 8 year old child, "
-        "fully clothed ordinary adults, plain unbranded modest everyday clothing, long trousers or coats, covered shoulders, plain aprons or jackets when useful, "
-        "ordinary people, neutral body language, candid everyday scene, "
+        "plain unbranded modest everyday clothing, long trousers or coats, covered shoulders, plain aprons, uniforms or jackets when useful, "
+        "ordinary people of different ages and genders, neutral body language, candid everyday scene, "
         "wide shot with people small-to-medium in frame, faces and hands are the only visible skin, "
-        "public or educational setting, believable people doing a clear everyday activity, realistic environment, "
+        "public, supervised, educational, workplace or community setting, believable people doing a clear everyday activity, realistic environment, "
         "natural imperfect background, clear subject, sharp details, candid photojournalistic composition. "
         f"Photo {image_id} must be easy to describe because the action, place and objects are obvious. "
         f"Theme: {_sanitize_prompt_text(request.taskTitle)}. Question focus: {question_focus}. Topic tags: {_sanitize_prompt_text(tags)}. "
         "Include enough concrete contextual clues for comparison, speculation and evaluation. "
+        "The generated scene must directly answer the Part 2 prompt, with visible evidence for why the people might be doing the activity and how useful, effective, difficult, stressful or important it might be. "
+        "Make this photo visibly different from the other two photos in age group, setting, activity, camera angle and objects, while staying on the same exam theme. "
+        "Do not repeat the same room, same pose, same group size, same main prop arrangement, same background or same camera distance as any other photo in the set. "
         "The composition is one continuous unbroken full-frame scene with no visible dividers, no frames and no borders. "
         "Make this one coherent single photograph with one foreground activity and one consistent background. "
         "Avoid staged stock-photo smiles; prefer a natural candid moment with clear actions and objects. "
         "Every visible person must be dressed appropriately for a school textbook."
     )
+
+
+def _demographic_plan(image_id: str) -> str:
+    plans = {
+        "A": (
+            "include a mixed-gender group with a school-age boy and a school-age girl plus a responsible adult instructor or parent, "
+            "all fully clothed in modest everyday clothes, clearly supervised, no close-up child portrait"
+        ),
+        "B": (
+            "include young adults of different genders, for example a young man and a young woman or a mixed group of students, "
+            "all fully clothed in modest everyday clothes, focused on the activity rather than posing"
+        ),
+        "C": (
+            "include middle-aged and older adults of different genders, for example an older woman, an older man and another adult, "
+            "all fully clothed in modest everyday clothes, naturally participating in the task"
+        ),
+    }
+    return plans.get(
+        image_id,
+        "include a diverse mixed-gender group of ordinary people of varied ages, all fully clothed in modest everyday clothes",
+    )
+
+
+def _composition_plan(image_id: str) -> str:
+    plans = {
+        "A": "horizontal wide shot, clear foreground action, simple uncluttered background, eye-level camera angle",
+        "B": "medium-wide candid shot from a different angle, busier background, slightly diagonal camera angle",
+        "C": "wide environmental shot with more context, different distance from the subjects, natural documentary camera angle",
+    }
+    return plans.get(image_id, "wide realistic candid shot with a clear activity and setting")
+
+
+def _diversity_plan(image_id: str, attempt: int = 0) -> str:
+    plans = {
+        "A": (
+            "Photo A should feel like a supervised learning scene with children and an adult helper, "
+            "using a simple foreground table or work area and a calm background"
+        ),
+        "B": (
+            "Photo B should feel clearly separate from Photo A: young adults in a busier public, campus, workplace or outdoor setting, "
+            "with different objects, different lighting and a different camera angle"
+        ),
+        "C": (
+            "Photo C should feel clearly separate from Photos A and B: older adults in a more spacious environment, "
+            "with different objects, different clothing colours, different group size and a wider sense of place"
+        ),
+    }
+    retry_notes = [
+        "",
+        "Regeneration instruction: make the place, people count, background colours and main objects much more different from the earlier attempt",
+        "Regeneration instruction: choose a substantially different real-world location, camera distance, clothing colours and activity arrangement",
+    ]
+    note = retry_notes[min(attempt, len(retry_notes) - 1)]
+    return f"{plans.get(image_id, 'make this photo clearly different from the other photos in the set')}; {note}".strip("; ")
 
 
 def _sanitize_prompt_text(value: str) -> str:
@@ -170,26 +238,43 @@ def _cambridge_safe_scene(request: Part2ImageGenerationRequest, variation: str) 
     text = _sanitize_prompt_text(variation).strip().rstrip(".")
     title = _sanitize_prompt_text(request.taskTitle).lower()
     tags = " ".join(request.topicTags).lower()
-    combined = f"{title} {tags} {text.lower()}"
+    detail = text.lower()
+    combined = f"{detail} {title} {tags}"
 
-    if any(keyword in combined for keyword in ["health", "exercise", "sport", "lifestyle"]):
-        setting = "a supervised public park fitness class with fully clothed adults wearing tracksuits and jackets"
+    if any(keyword in detail for keyword in ["map", "navigation", "route", "compass"]):
+        setting = "a supervised outdoor learning activity or city information point with fully clothed people using maps, a compass and bags"
+    elif any(keyword in detail for keyword in ["sewing", "fabric", "thread"]):
+        setting = "a community classroom, library makerspace or tidy home-study table with fully clothed people learning sewing"
+    elif any(keyword in detail for keyword in ["woodwork", "woodworking", "tools", "workbench", "workshop"]):
+        setting = "a supervised community workshop with fully clothed people using tools safely at workbenches"
+    elif any(keyword in detail for keyword in ["recycl"]):
+        setting = "a public community recycling project with fully clothed volunteers sorting bottles, cardboard and recycling boxes"
+    elif any(keyword in detail for keyword in ["tree", "plant", "garden"]):
+        setting = "a public community gardening project with fully clothed volunteers planting young trees or plants"
+    elif any(keyword in detail for keyword in ["laptop", "online", "software", "screen"]):
+        setting = "a tidy classroom, library or office workspace with fully clothed people using laptops, phones and notes"
+    elif any(keyword in detail for keyword in ["food", "cooking", "kitchen"]):
+        setting = "a bright family kitchen or community room with fully clothed people preparing food together"
+    elif any(keyword in detail for keyword in ["camera", "photograph", "filming"]):
+        setting = "a classroom, public arts centre or community event with fully clothed people using a camera or phone"
+    elif any(keyword in combined for keyword in ["health", "exercise", "sport", "lifestyle"]):
+        setting = "a supervised public park fitness class with fully clothed people wearing tracksuits and jackets"
     elif any(keyword in combined for keyword in ["travel", "transport", "route", "discovering", "places"]):
         setting = "a public transport hub or city information point with fully clothed travellers using maps and bags"
     elif any(keyword in combined for keyword in ["home", "family", "friends", "cooking", "food"]):
         setting = "a bright family kitchen or community room with fully clothed people preparing food together"
     elif any(keyword in combined for keyword in ["technology", "communication", "software", "online"]):
-        setting = "a tidy classroom or office workspace with fully clothed people using laptops and phones"
+        setting = "a tidy classroom, library or office workspace with fully clothed people using laptops and phones"
     elif any(keyword in combined for keyword in ["environment", "trees", "recycling", "park"]):
         setting = "a public community project with fully clothed volunteers sorting recycling or planting trees"
     elif any(keyword in combined for keyword in ["workshop", "tools", "practical", "repair", "craft"]):
-        setting = "a supervised community workshop with fully clothed adults using tools safely at workbenches"
+        setting = "a supervised community workshop with fully clothed people using tools safely at workbenches"
     elif any(keyword in combined for keyword in ["art", "culture", "creative", "photography", "music"]):
         setting = "a classroom, museum workshop or public arts centre with fully clothed people doing creative activities"
     elif any(keyword in combined for keyword in ["money", "shopping", "budget", "business"]):
         setting = "a public office, market stall or classroom table with fully clothed people comparing documents or products"
     else:
-        setting = "a neutral public classroom, community centre or workplace with fully clothed adults doing a clear everyday activity"
+        setting = "a neutral public classroom, community centre or workplace with fully clothed people doing a clear everyday activity"
 
     return (
         f"{setting}; {_specific_activity_detail(text)}"
@@ -199,7 +284,7 @@ def _cambridge_safe_scene(request: Part2ImageGenerationRequest, variation: str) 
 def _specific_activity_detail(text: str) -> str:
     lower = text.lower()
     if "woodwork" in lower or "woodworking" in lower:
-        return "indoor woodworking workshop, adults actively learning woodworking at wooden workbenches, visible wood boards, hand tools, clamps, safety glasses and an instructor demonstrating a technique"
+        return "indoor woodworking workshop, people actively learning woodworking at wooden workbenches, visible wood boards, hand tools, clamps, safety glasses and an instructor demonstrating a technique"
     if "sewing" in lower:
         return "a person is clearly learning sewing, with a sewing machine, fabric pieces, thread and an online lesson visible on a laptop"
     if "map" in lower or "navigation" in lower or "route" in lower:
@@ -383,7 +468,7 @@ def _negative_prompt(variation: str = "") -> str:
     lower = variation.lower()
     topic_negatives = ""
     if "woodwork" in lower or "woodworking" in lower:
-        topic_negatives = "outdoor path, walking in park, hiking, classroom lecture without tools, children, minors, "
+        topic_negatives = "outdoor path, walking in park, hiking, classroom lecture without tools, unsupervised children using power tools, "
     elif "sewing" in lower:
         topic_negatives = "outdoor path, walking, workshop without fabric, "
     elif "map" in lower or "navigation" in lower or "route" in lower:
@@ -395,7 +480,7 @@ def _negative_prompt(variation: str = "") -> str:
 
     return (
         topic_negatives +
-        "children, minors, illustration, cartoon, anime, painting, drawing, poster, collage, split screen, grid, "
+        "unsupervised children, sexualized minors, child glamour portrait, illustration, cartoon, anime, painting, drawing, poster, collage, split screen, grid, "
         "triptych, diptych, contact sheet, photo booth strip, three photos, multiple photos, multiple images, "
         "multiple panels, panel layout, tiled layout, mosaic, storyboard, mood board, picture frame, border, "
         "text, letters, words, captions, subtitles, watermark, logo, brand, UI, interface, "
@@ -640,6 +725,90 @@ def _passes_child_safe_visual_gate(b64_png: str) -> tuple[bool, str | None]:
     return True, None
 
 
+def _passes_diversity_visual_gate(
+    candidate_b64_png: str,
+    previous_b64_pngs: list[str],
+) -> tuple[bool, str | None]:
+    if not previous_b64_pngs:
+        return True, None
+
+    try:
+        candidate_bytes = base64.b64decode(_normalize_base64_image(candidate_b64_png))
+        candidate_width, candidate_height, candidate_pixels = _read_png_rgb_pixels(candidate_bytes)
+        candidate_signature = _image_similarity_signature(candidate_width, candidate_height, candidate_pixels)
+
+        closest_score = 1.0
+        for previous_b64_png in previous_b64_pngs:
+            previous_bytes = base64.b64decode(_normalize_base64_image(previous_b64_png))
+            previous_width, previous_height, previous_pixels = _read_png_rgb_pixels(previous_bytes)
+            previous_signature = _image_similarity_signature(previous_width, previous_height, previous_pixels)
+            closest_score = min(closest_score, _signature_difference(candidate_signature, previous_signature))
+    except Exception as exc:
+        return False, f"could not inspect generated image diversity: {exc}"
+
+    if closest_score < 0.115:
+        return False, f"too visually similar to an earlier photo in the set ({closest_score:.3f})"
+
+    return True, None
+
+
+def _image_similarity_signature(
+    width: int,
+    height: int,
+    pixels: list[tuple[int, int, int]],
+    columns: int = 12,
+    rows: int = 8,
+) -> list[tuple[float, float, float, float]]:
+    if width <= 0 or height <= 0 or not pixels:
+        return []
+
+    signature: list[tuple[float, float, float, float]] = []
+    for row in range(rows):
+        y0 = (row * height) // rows
+        y1 = max(y0 + 1, ((row + 1) * height) // rows)
+        for column in range(columns):
+            x0 = (column * width) // columns
+            x1 = max(x0 + 1, ((column + 1) * width) // columns)
+            red_total = 0
+            green_total = 0
+            blue_total = 0
+            luminance_total = 0
+            count = 0
+            for y in range(y0, y1, max(1, (y1 - y0) // 8)):
+                for x in range(x0, x1, max(1, (x1 - x0) // 8)):
+                    red, green, blue = pixels[y * width + x]
+                    red_total += red
+                    green_total += green
+                    blue_total += blue
+                    luminance_total += int((red * 299 + green * 587 + blue * 114) / 1000)
+                    count += 1
+            divisor = max(count * 255, 1)
+            signature.append(
+                (
+                    red_total / divisor,
+                    green_total / divisor,
+                    blue_total / divisor,
+                    luminance_total / divisor,
+                )
+            )
+    return signature
+
+
+def _signature_difference(
+    first: list[tuple[float, float, float, float]],
+    second: list[tuple[float, float, float, float]],
+) -> float:
+    length = min(len(first), len(second))
+    if length == 0:
+        return 1.0
+
+    difference = 0.0
+    for first_cell, second_cell in zip(first[:length], second[:length]):
+        difference += sum(abs(first_value - second_value) for first_value, second_value in zip(first_cell, second_cell))
+
+    return difference / (length * 4)
+
+
 def _dark_footer_score(width: int, height: int, pixels: list[tuple[int, int, int]]) -> float:
     if width < 20 or height < 20 or not pixels:
         return 0
@@ -846,11 +1015,8 @@ async def _generate_part2_images_uncached(
                 if remaining_total <= 1:
                     raise TimeoutError(f"Local image generation exceeded the {total_timeout}s limit")
 
-                PART2_IMAGE_JOB["stage"] = (
-                    f"Generating photo {image_id}"
-                    if attempt == 0
-                    else f"Regenerating photo {image_id} after safety rejection"
-                )
+                prompt = _build_prompt(request, image_id, variation, attempt)
+                PART2_IMAGE_JOB["stage"] = f"Generating photo {image_id}" if attempt == 0 else rejection_reason or f"Regenerating photo {image_id}"
                 per_image_timeout = max(1, min(remaining_total, remaining_total / max(remaining_images, 1) + 8))
                 candidate_b64 = await _generate_local_stable_diffusion_image(
                     prompt,
@@ -859,13 +1025,24 @@ async def _generate_part2_images_uncached(
                     request.imageModel,
                 )
                 is_safe, rejection_reason = _passes_child_safe_visual_gate(candidate_b64)
-                if is_safe:
-                    b64_png = candidate_b64
-                    break
+                if not is_safe:
+                    rejection_reason = f"Regenerating photo {image_id} after safety rejection"
+                    continue
+
+                is_distinct, diversity_reason = _passes_diversity_visual_gate(
+                    candidate_b64,
+                    [image.url for image in images],
+                )
+                if not is_distinct:
+                    rejection_reason = f"Regenerating photo {image_id}: {diversity_reason}"
+                    continue
+
+                b64_png = candidate_b64
+                break
 
             if b64_png is None:
                 raise RuntimeError(
-                    f"Generated photo {image_id} was rejected by the child-safe visual gate: {rejection_reason}"
+                    f"Generated photo {image_id} was rejected by the safety or diversity gates: {rejection_reason}"
                 )
             images.append(
                 GeneratedImageAsset(

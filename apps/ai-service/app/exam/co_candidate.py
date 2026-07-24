@@ -96,7 +96,7 @@ Your role in Part {context.exam_part}:
 - Help move the conversation forward
 - Invite the other candidate's opinion
 - Use natural C1-level English
-- Keep each turn concise: usually 1-3 sentences
+- Keep each turn concise: usually 2-4 sentences
 - Refer to specific options from the task, not vague generalities
 - Use collaborative functions such as inviting, building, balancing, narrowing down, and proposing a decision
 - In the decision phase, explicitly compare options and help reach agreement

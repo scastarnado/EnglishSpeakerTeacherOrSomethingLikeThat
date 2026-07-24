@@ -245,6 +245,7 @@ export default function SessionPage() {
   const [statusMessage, setStatusMessage] = useState('Loading session...');
   const [partSummary, setPartSummary] = useState<PartSummaryState | null>(null);
   const [part2ImageOverrides, setPart2ImageOverrides] = useState<Record<string, GeneratedImageAsset[]>>({});
+  const [activePart2VisualTask, setActivePart2VisualTask] = useState<SpeakingTaskLite | null>(null);
   const [imageGeneration, setImageGeneration] = useState<ImageGenerationState | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -261,6 +262,13 @@ export default function SessionPage() {
 
   const rawCurrentStep = examPlan[Math.min(currentStepIndex, examPlan.length - 1)];
   const currentStep = getStepWithGeneratedImages(rawCurrentStep);
+  const part2ChatTask =
+    currentStep.part === 2
+      ? activePart2VisualTask?.id === currentStep.task?.id
+        ? activePart2VisualTask
+        : currentStep.task
+      : null;
+  const part2ChatImages = part2ChatTask?.imageAssets ?? [];
   const currentPart = currentStep.part;
   const isTrainingMode =
     session?.mode === 'conversation' || session?.mode === 'intensive_correction';
@@ -301,6 +309,12 @@ export default function SessionPage() {
 
     return () => clearInterval(interval);
   }, [recordingStartedAt]);
+
+  useEffect(() => {
+    if (currentStep.part !== 2) {
+      setActivePart2VisualTask(null);
+    }
+  }, [currentStep.part, currentStep.task?.id]);
 
   useEffect(() => {
     if (!isRecording || hardStopSeconds === null) return;
@@ -493,11 +507,17 @@ export default function SessionPage() {
   async function preparePart2Images(step: ExamStep, sessionData: Session): Promise<ExamStep> {
     if (step.part !== 2 || !step.task) return getStepWithGeneratedImages(step);
     if (!preferences.enableLocalImageGeneration) {
-      return getStepWithGeneratedImages(step);
+      const preparedStep = getStepWithGeneratedImages(step);
+      setActivePart2VisualTask(preparedStep.task ?? null);
+      return preparedStep;
     }
 
     const existingOverride = part2ImageOverrides[step.task.id];
-    if (existingOverride?.length) return getStepWithGeneratedImages(step);
+    if (existingOverride?.length) {
+      const preparedStep = getStepWithGeneratedImages(step);
+      setActivePart2VisualTask(preparedStep.task ?? null);
+      return preparedStep;
+    }
 
     setIsProcessing(true);
     setStatusMessage('Checking for a local image generator...');
@@ -541,10 +561,18 @@ export default function SessionPage() {
       const images = await part2ImageRequestsRef.current[requestKey];
 
       if (images.length > 0) {
+        const preparedStep = {
+          ...step,
+          task: {
+            ...step.task,
+            imageAssets: images,
+          },
+        };
         setPart2ImageOverrides((previous) => ({
           ...previous,
           [step.task!.id]: images,
         }));
+        setActivePart2VisualTask(preparedStep.task);
         notify({
           type: 'success',
           title: 'Part 2 photos ready',
@@ -564,16 +592,12 @@ export default function SessionPage() {
               }
             : null,
         );
-        return {
-          ...step,
-          task: {
-            ...step.task,
-            imageAssets: images,
-          },
-        };
+        return preparedStep;
       }
 
-      return getStepWithGeneratedImages(step);
+      const preparedStep = getStepWithGeneratedImages(step);
+      setActivePart2VisualTask(preparedStep.task ?? null);
+      return preparedStep;
     } catch (error: any) {
       console.error('Failed to generate Part 2 images:', error);
       const errorMessage =
@@ -585,7 +609,9 @@ export default function SessionPage() {
         title: 'Image generation unavailable',
         message: errorMessage,
       });
-      return getStepWithGeneratedImages(step);
+      const preparedStep = getStepWithGeneratedImages(step);
+      setActivePart2VisualTask(preparedStep.task ?? null);
+      return preparedStep;
     } finally {
       setIsProcessing(false);
       setImageGeneration((previous) => (previous?.active ? null : previous));
@@ -1237,19 +1263,26 @@ export default function SessionPage() {
             </div>
           )}
 
-          {currentStep.part === 2 && currentStep.task?.imageAssets && currentStep.task.imageAssets.length > 0 && (
+          {currentStep.part === 2 && part2ChatImages.length > 0 && (
             <section className="mb-6 rounded-lg border border-border bg-card p-4">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Part 2 picture board</p>
-                  <h2 className="mt-1 text-lg font-semibold">Choose two photos and compare them</h2>
+                  <h2 className="mt-1 text-lg font-semibold">
+                    {part2ChatTask?.title ?? 'Choose two photos and compare them'}
+                  </h2>
                 </div>
                 <p className="hidden max-w-xs text-right text-xs text-muted-foreground sm:block">
                   Keep all three visible while speaking. In the exam, talk about two only.
                 </p>
               </div>
+              {part2ChatTask?.instructions && (
+                <p className="mb-4 rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                  {part2ChatTask.instructions}
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                {currentStep.task.imageAssets.map((image) => (
+                {part2ChatImages.map((image) => (
                   <button
                     key={image.id}
                     type="button"
